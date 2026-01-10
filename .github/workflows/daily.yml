@@ -1,4 +1,4 @@
-name: sniper-daily
+name: Final Engine
 
 on:
   workflow_dispatch:
@@ -32,5 +32,5 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: sniper-output-${{ github.run_id }}
+          name: Final-Engine-${{ github.run_id }}
           path: data
