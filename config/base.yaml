@@ -18,12 +18,14 @@ paths:
   survivors_out: "data/processed/survivors/survivors.json"
   intel_out: "data/processed/intel_30/intel_30.json"
   dashboard_out: "data/artifacts/dashboard/index.html"
-  dashboard_template: "templates/dashboard.html"
 
 universe:
   provider: "nasdaqtrader"
   exclude_etf: true
   max_symbols: 6500
+  sources:
+    - "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqtraded.txt"
+    - "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt"
 
 run:
   scan_limit: 1200
@@ -38,6 +40,7 @@ scanner:
   max_workers: 2
   cache_ttl_hours: 168
   fallback_to_fake: true
+  min_delay_sec: 0.35
 
 funnel:
   survivors_n: 30
