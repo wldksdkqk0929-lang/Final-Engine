@@ -1,7 +1,7 @@
 engine:
   name: "Final Engine"
   provider: "gemini"
-  # [수정됨] 존재하지 않는 2.5 대신 1.5 Flash 사용 (빠르고 정확함)
+  # [수정] 2.5(환각) -> 1.5-flash(실제 모델)
   model: "gemini-1.5-flash"
   prompt_ko_template: |
     너는 미국 주식 턴어라운드 스나이퍼 전략 분석가다.
