@@ -20,14 +20,12 @@ paths:
   dashboard_out: "data/artifacts/dashboard/index.html"
   dashboard_template: "templates/dashboard.html"
 
-# A: Universe 자동 수집 설정
 universe:
-  provider: "nasdaqtrader"   # "nasdaqtrader" or "seed"
+  provider: "nasdaqtrader"
   exclude_etf: true
-  max_symbols: 6500          # 유니버스 상한(너무 크면 여기로 컷)
+  max_symbols: 6500
 
 run:
-  # 시간 폭발 방지: 유니버스는 5000+ 만들되, 스캔은 여기만큼만 먼저 돈다
   scan_limit: 800
   intel_n: 30
 
@@ -36,6 +34,9 @@ scanner:
   lookback_days: 365
   adv_window: 20
   timeout_sec: 12
+  retries: 2
+  max_workers: 12
+  cache_ttl_hours: 48
   fallback_to_fake: true
 
 funnel:
