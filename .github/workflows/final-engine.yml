@@ -3,30 +3,75 @@ name: Final Engine
 on:
   workflow_dispatch:
 
+concurrency:
+  group: final-engine
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   run:
     runs-on: ubuntu-latest
+
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+      FINAL_ENGINE_CONFIG: config/base.yaml
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 1) 이전 성공 run의 cache 아티팩트 다운로드 (없으면 첫 실행이니 무시)
+      - name: Download previous cache artifact (if exists)
+        continue-on-error: true
+        uses: dawidd6/action-download-artifact@v12
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          workflow: final-engine.yml
+          workflow_conclusion: success
+          name: final-engine-cache
+          path: __artifact_restore__
+          branch: main
+
+      # 2) 경로 중첩 없이 원래 위치로 복원
+      - name: Restore state and coverage files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          restore_dir="__artifact_restore__"
+          files=(
+            "data/cache/state.json"
+            "data/cache/coverage_universe.json"
+            "data/cache/stooq/state.json"
+            "data/cache/stooq/coverage_universe.json"
+          )
+
+          mkdir -p data/cache data/cache/stooq
+
+          for f in "${files[@]}"; do
+            if [ -f "${restore_dir}/${f}" ]; then
+              mkdir -p "$(dirname "${f}")"
+              cp -f "${restore_dir}/${f}" "${f}"
+              echo "RESTORED: ${f}"
+            else
+              echo "MISSING IN ARTIFACT: ${f}"
+            fi
+          done
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
-      # ✅ 이전 run의 state를 레포 루트에 복원 (경로 꼬임 방지)
-      - name: Restore state from previous run (artifact)
-        uses: dawidd6/action-download-artifact@v3
-        with:
-          workflow: final-engine.yml
-          name: final-engine-state
-          path: .
-          if_no_artifact_found: ignore
+          cache: pip
 
       - name: Install dependencies
+        shell: bash
         run: |
+          set -euo pipefail
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then
             pip install -r requirements.txt
@@ -35,31 +80,34 @@ jobs:
           fi
 
       - name: Run Final Engine
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          FINAL_ENGINE_CONFIG: config/base.yaml
+        shell: bash
         run: |
+          set -euo pipefail
           python run.py
 
-      # ✅ state는 “파일만” 업로드 (폴더 중첩 원천 차단)
-      - name: Upload state artifact (for next run)
-        uses: actions/upload-artifact@v4
+      # 3) 이번 실행의 cache 4개 파일을 다음 run을 위해 업로드
+      - name: Upload cache artifact (state/coverage)
+        if: always()
+        uses: actions/upload-artifact@v6
         with:
-          name: final-engine-state
+          name: final-engine-cache
+          retention-days: 90
+          if-no-files-found: warn
           path: |
             data/cache/state.json
             data/cache/coverage_universe.json
             data/cache/stooq/state.json
             data/cache/stooq/coverage_universe.json
-          if-no-files-found: warn
-          retention-days: 30
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+      # 4) 결과물도 같이 업로드 (대시보드/로그 확인용)
+      - name: Upload engine artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
         with:
           name: final-engine-artifacts
+          retention-days: 30
+          if-no-files-found: warn
           path: |
             data/processed
             data/artifacts
             data/logs
-          if-no-files-found: warn
