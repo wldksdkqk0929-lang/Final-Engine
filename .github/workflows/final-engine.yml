@@ -2,6 +2,8 @@ name: Final Engine
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "5 15 * * *"  # 매일 한국 시간 00:05 실행
 
 concurrency:
   group: final-engine
@@ -24,43 +26,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 1) 이전 성공 run의 cache 아티팩트 다운로드 (없으면 첫 실행이니 무시)
-      - name: Download previous cache artifact (if exists)
+      # [수정됨] 브랜치 제약 없이 '가장 최근 성공한' 캐시 파일 다운로드
+      - name: Download previous cache artifact
         continue-on-error: true
-        uses: dawidd6/action-download-artifact@v12
+        uses: dawidd6/action-download-artifact@v6
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           workflow: final-engine.yml
           workflow_conclusion: success
           name: final-engine-cache
-          path: __artifact_restore__
-          branch: main
+          path: .
+          search_artifacts: true  # 모든 아티팩트 검색
 
-      # 2) 경로 중첩 없이 원래 위치로 복원
-      - name: Restore state and coverage files
+      # [수정됨] 다운로드된 파일이 있는지 확인하고 원래 위치로 복구
+      - name: Restore cache files
         shell: bash
         run: |
-          set -euo pipefail
-
-          restore_dir="__artifact_restore__"
-          files=(
-            "data/cache/state.json"
-            "data/cache/coverage_universe.json"
-            "data/cache/stooq/state.json"
-            "data/cache/stooq/coverage_universe.json"
-          )
-
-          mkdir -p data/cache data/cache/stooq
-
-          for f in "${files[@]}"; do
-            if [ -f "${restore_dir}/${f}" ]; then
-              mkdir -p "$(dirname "${f}")"
-              cp -f "${restore_dir}/${f}" "${f}"
-              echo "RESTORED: ${f}"
-            else
-              echo "MISSING IN ARTIFACT: ${f}"
-            fi
-          done
+          echo "Restoring cache files..."
+          # 만약 artifact가 다운로드 되었다면 루트 혹은 폴더에 있을 것임
+          if [ -f "data/cache/state.json" ]; then
+            echo "Found cache in data/cache!"
+          else
+            echo "No direct cache found. Checking restore paths..."
+          fi
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -69,44 +57,33 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        shell: bash
         run: |
-          set -euo pipefail
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then
-            pip install -r requirements.txt
-          else
-            pip install pyyaml requests google-genai
-          fi
+          pip install pyyaml requests google-genai
 
       - name: Run Final Engine
-        shell: bash
-        run: |
-          set -euo pipefail
-          python run.py
+        run: python run.py
 
-      # 3) 이번 실행의 cache 4개 파일을 다음 run을 위해 업로드
-      - name: Upload cache artifact (state/coverage)
+      # [중요] 다음 실행을 위해 이번 결과를 반드시 업로드
+      - name: Upload cache artifact (Persistence)
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: final-engine-cache
           retention-days: 90
-          if-no-files-found: warn
+          overwrite: true
           path: |
             data/cache/state.json
             data/cache/coverage_universe.json
             data/cache/stooq/state.json
             data/cache/stooq/coverage_universe.json
 
-      # 4) 결과물도 같이 업로드 (대시보드/로그 확인용)
-      - name: Upload engine artifacts
+      - name: Upload dashboard and logs
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
-          name: final-engine-artifacts
+          name: final-engine-result-${{ github.run_id }}
           retention-days: 30
-          if-no-files-found: warn
           path: |
             data/processed
             data/artifacts
