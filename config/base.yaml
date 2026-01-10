@@ -1,7 +1,8 @@
 engine:
   name: "Final Engine"
   provider: "gemini"
-  model: "gemini-2.5-flash"
+  # [수정됨] 존재하지 않는 2.5 대신 1.5 Flash 사용 (빠르고 정확함)
+  model: "gemini-1.5-flash"
   prompt_ko_template: |
     너는 미국 주식 턴어라운드 스나이퍼 전략 분석가다.
     티커: {{ticker}}
@@ -26,20 +27,11 @@ universe:
   max_symbols: 6500
 
 run:
-  # daily / expand 둘 중 하나
   mode: "daily"
-
-  # daily: coverage_universe가 이 개수 이상일 때만 coverage로 돈다
   coverage_min: 600
   coverage_cap: 6000
-
-  # daily에서 실제 스캔량(안정화 후 800→1200→2000 올림)
   scan_limit: 800
-
-  # expand에서 매번 새로 긁는 양(커버리지 확장용)
   expand_scan_limit: 500
-
-  # intel
   intel_n: 30
 
 scanner:
