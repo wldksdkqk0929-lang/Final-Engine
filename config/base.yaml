@@ -1,0 +1,12 @@
+engine:
+  name: "Final Engine"
+  provider: "gemini"
+  model: "gemini-2.5-flash"
+  prompt_ko: "턴어라운드 스나이퍼 전략에서 뉴스→펀더멘털→차트 필터 순서를 한국어로 3줄 요약해줘."
+
+paths:
+  logs_root: "data/logs/runs"
+  intel_out: "data/processed/intel_30/intel_30.json"
+
+run:
+  test_ticker: "TEST"
