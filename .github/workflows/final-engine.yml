@@ -16,15 +16,16 @@ jobs:
         with:
           python-version: "3.11"
 
-      # ✅ 핵심: data/cache 전체를 통째로 캐시 (csv + coverage/state + 기타)
-      - name: Cache Final Engine (data/cache)
-        uses: actions/cache@v4
+      # ✅ 1) Restore: prefix로 가장 최신 캐시를 가져옴
+      - name: Restore Final Engine cache
+        id: cache-restore
+        uses: actions/cache/restore@v4
         with:
           path: |
             data/cache
-          key: final-engine-cache-${{ runner.os }}
+          key: final-engine-cache-${{ runner.os }}-${{ github.run_id }}
           restore-keys: |
-            final-engine-cache-${{ runner.os }}
+            final-engine-cache-${{ runner.os }}-
 
       - name: Install dependencies
         run: |
@@ -41,6 +42,14 @@ jobs:
           FINAL_ENGINE_CONFIG: config/base.yaml
         run: |
           python run.py
+
+      # ✅ 2) Save: 매 실행마다 새 key로 저장(덮어쓰기 문제 제거)
+      - name: Save Final Engine cache
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            data/cache
+          key: final-engine-cache-${{ runner.os }}-${{ github.run_id }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
