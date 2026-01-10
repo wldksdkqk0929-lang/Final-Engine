@@ -23,6 +23,13 @@ paths:
 run:
   intel_n: 30
 
+scanner:
+  provider: "stooq"        # "stooq" or "fake"
+  lookback_days: 365       # 52주 근사
+  adv_window: 20           # ADV 계산 기간(거래일)
+  timeout_sec: 12
+  fallback_to_fake: true   # 티커별 실패 시 FAKE로 폴백
+
 funnel:
   survivors_n: 30
   sort_key: "dd_52w_pct"
