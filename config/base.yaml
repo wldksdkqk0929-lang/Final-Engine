@@ -2,7 +2,14 @@ engine:
   name: "Final Engine"
   provider: "gemini"
   model: "gemini-2.5-flash"
-  prompt_ko: "턴어라운드 스나이퍼 전략에서 뉴스→펀더멘털→차트 필터 순서를 한국어로 3줄 요약해줘."
+  prompt_ko_template: |
+    너는 미국 주식 턴어라운드 스나이퍼 전략 분석가다.
+    티커: {{ticker}}
+    아래 형식으로 한국어로만 답해라.
+    - 핵심 악재(1줄)
+    - 회복 신호(1줄)
+    - 확인할 지표(3개)
+    - 결론(관찰/예비/확정 중 1개)
 
 paths:
   logs_root: "data/logs/runs"
@@ -14,9 +21,8 @@ paths:
   dashboard_template: "templates/dashboard.html"
 
 run:
-  test_ticker: "TEST"
+  intel_n: 30
 
 funnel:
   survivors_n: 30
-  # 지금은 가짜 스캔이므로 규칙을 단순화: 낙폭이 큰 순으로 상위 N개
   sort_key: "dd_52w_pct"
