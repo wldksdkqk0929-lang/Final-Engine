@@ -18,29 +18,39 @@ paths:
   survivors_out: "data/processed/survivors/survivors.json"
   intel_out: "data/processed/intel_30/intel_30.json"
   dashboard_out: "data/artifacts/dashboard/index.html"
+  dashboard_template: "templates/dashboard.html"
 
 universe:
   provider: "nasdaqtrader"
   exclude_etf: true
   max_symbols: 6500
-  sources:
-    - "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqtraded.txt"
-    - "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt"
 
 run:
-  scan_limit: 1200
+  # daily / expand 둘 중 하나
+  mode: "daily"
+
+  # daily: coverage_universe가 이 개수 이상일 때만 coverage로 돈다
+  coverage_min: 600
+  coverage_cap: 6000
+
+  # daily에서 실제 스캔량(안정화 후 800→1200→2000 올림)
+  scan_limit: 800
+
+  # expand에서 매번 새로 긁는 양(커버리지 확장용)
+  expand_scan_limit: 500
+
+  # intel
   intel_n: 30
 
 scanner:
   provider: "stooq"
   lookback_days: 365
   adv_window: 20
-  timeout_sec: 35
-  retries: 8
-  max_workers: 2
+  timeout_sec: 20
+  retries: 4
+  max_workers: 4
   cache_ttl_hours: 168
   fallback_to_fake: true
-  min_delay_sec: 0.35
 
 funnel:
   survivors_n: 30
