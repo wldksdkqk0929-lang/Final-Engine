@@ -38,7 +38,15 @@ def load_config() -> dict:
             "name": "Final Engine",
             "provider": "gemini",
             "model": "gemini-2.5-flash",
-            "prompt_ko": "턴어라운드 스나이퍼 전략에서 뉴스→펀더멘털→차트 필터 순서를 한국어로 3줄 요약해줘.",
+            "prompt_ko_template": (
+                "너는 미국 주식 턴어라운드 스나이퍼 전략 분석가다.\n"
+                "티커: {{ticker}}\n"
+                "아래 형식으로 한국어로만 답해라.\n"
+                "- 핵심 악재(1줄)\n"
+                "- 회복 신호(1줄)\n"
+                "- 확인할 지표(3개)\n"
+                "- 결론(관찰/예비/확정 중 1개)\n"
+            ),
         },
         "paths": {
             "logs_root": "data/logs/runs",
@@ -50,7 +58,7 @@ def load_config() -> dict:
             "dashboard_template": "templates/dashboard.html",
         },
         "run": {
-            "test_ticker": "TEST",
+            "intel_n": 30,
         },
         "funnel": {
             "survivors_n": 30,
@@ -90,7 +98,7 @@ def build_dashboard_html(template_path: Path, out_path: Path, context: dict) -> 
     tpl = read_text(template_path)
     html = tpl
 
-    raw_keys = {"scan_table_html", "survivors_table_html"}
+    raw_keys = {"scan_table_html", "survivors_table_html", "intel_table_html"}
 
     for key, val in context.items():
         token = f"{{{{{key}}}}}"
@@ -156,7 +164,6 @@ def build_scan_table_html(top_rows: list[dict]) -> str:
 
 
 def funnel_survivors(candidates: list[dict], n: int, sort_key: str) -> list[dict]:
-    # sort_key: dd_52w_pct (더 낮을수록 낙폭 큼)
     if sort_key == "dd_52w_pct":
         sorted_rows = sorted(candidates, key=lambda r: (r.get("dd_52w_pct", 0.0), -r.get("adv_usd_m", 0.0)))
     else:
@@ -186,12 +193,53 @@ def build_survivors_table_html(rows: list[dict]) -> str:
     return head + body + "</tbody></table>"
 
 
+def render_prompt(template: str, ticker: str) -> str:
+    return template.replace("{{ticker}}", ticker)
+
+
+def run_intel_for_ticker(client, model: str, prompt_template: str, ticker: str) -> dict:
+    prompt = render_prompt(prompt_template, ticker)
+    try:
+        resp = client.models.generate_content(model=model, contents=prompt)
+        text = (resp.text or "").strip()
+        if not text:
+            raise RuntimeError("Empty response text")
+        return {"ticker": ticker, "status": "SUCCESS", "reason": None, "text_ko": text}
+    except Exception as e:
+        return {"ticker": ticker, "status": "FAILED", "reason": repr(e), "text_ko": "분석 실패"}
+
+
+def build_intel_table_html(rows: list[dict], top_n: int = 10) -> str:
+    ok = [r for r in rows if r.get("status") == "SUCCESS"]
+    show = ok[:top_n]
+    if not show:
+        return "<div class='muted'>Intel SUCCESS 없음</div>"
+
+    head = (
+        "<table><thead><tr>"
+        "<th>#</th><th>Ticker</th><th>Status</th><th>요약</th>"
+        "</tr></thead><tbody>"
+    )
+    body = ""
+    for i, r in enumerate(show, start=1):
+        text = r.get("text_ko", "")
+        body += (
+            "<tr>"
+            f"<td>{i}</td>"
+            f"<td><b>{safe_html_escape(r['ticker'])}</b></td>"
+            f"<td>{safe_html_escape(r.get('status',''))}</td>"
+            f"<td class='small'>{safe_html_escape(text)}</td>"
+            "</tr>"
+        )
+    return head + body + "</tbody></table>"
+
+
 def main() -> None:
     cfg = load_config()
 
     engine_name = cfg["engine"]["name"]
     model = cfg["engine"]["model"]
-    prompt_ko = cfg["engine"]["prompt_ko"]
+    prompt_template = cfg["engine"]["prompt_ko_template"]
 
     logs_root = Path(cfg["paths"]["logs_root"])
     universe_out = Path(cfg["paths"]["universe_out"])
@@ -201,7 +249,7 @@ def main() -> None:
     dashboard_out = Path(cfg["paths"]["dashboard_out"])
     dashboard_template = Path(cfg["paths"]["dashboard_template"])
 
-    test_ticker = cfg["run"]["test_ticker"]
+    intel_n = int(cfg["run"]["intel_n"])
     survivors_n = int(cfg["funnel"]["survivors_n"])
     sort_key = str(cfg["funnel"]["sort_key"])
 
@@ -248,40 +296,32 @@ def main() -> None:
     run_json["artifacts"]["survivors"] = str(survivors_out)
     run_json["counts"]["survivors"] = len(survivors)
 
-    # C) Intel
-    intel_status = "SKIPPED"
-    intel_text_ko = "초기 상태: 인텔 없음"
+    # C) Intel (멀티)
+    intel_rows = []
     gemini_key = os.getenv("GEMINI_API_KEY", "")
-
     if not gemini_key:
-        intel = [{"ticker": test_ticker, "status": "SKIPPED", "reason": "GEMINI_API_KEY not set", "text_ko": "Gemini API 키가 설정되지 않아 인텔 모듈을 건너뜀."}]
-        write_json(intel_out, intel)
-        intel_status = "SKIPPED"
-        intel_text_ko = intel[0]["text_ko"]
+        # 키 없으면 전부 SKIPPED
+        for r in survivors[:intel_n]:
+            intel_rows.append({"ticker": r["ticker"], "status": "SKIPPED", "reason": "GEMINI_API_KEY not set", "text_ko": "API 키 없음"})
         run_json["status"] = "SUCCESS_WITHOUT_INTEL"
-        run_json["artifacts"]["intel_30"] = str(intel_out)
     else:
         try:
             from google import genai
             client = genai.Client()
-            resp = client.models.generate_content(model=model, contents=prompt_ko)
-            text = (resp.text or "").strip()
-            if not text:
-                raise RuntimeError("Empty response text")
-            intel = [{"ticker": test_ticker, "status": "SUCCESS", "reason": None, "text_ko": text}]
-            write_json(intel_out, intel)
-            intel_status = "SUCCESS"
-            intel_text_ko = text
+
+            for r in survivors[:intel_n]:
+                intel_rows.append(run_intel_for_ticker(client, model, prompt_template, r["ticker"]))
+
             run_json["status"] = "SUCCESS"
-            run_json["artifacts"]["intel_30"] = str(intel_out)
         except Exception as e:
-            intel = [{"ticker": test_ticker, "status": "FAILED", "reason": repr(e), "text_ko": "Gemini 호출 실패. 기술 모드로 대체 필요."}]
-            write_json(intel_out, intel)
-            intel_status = "FAILED"
-            intel_text_ko = intel[0]["text_ko"]
             run_json["status"] = "SUCCESS_WITH_INTEL_FAILED"
-            run_json["artifacts"]["intel_30"] = str(intel_out)
             run_json["errors"].append(repr(e))
+            for r in survivors[:intel_n]:
+                intel_rows.append({"ticker": r["ticker"], "status": "FAILED", "reason": "client_init_failed", "text_ko": "클라이언트 초기화 실패"})
+
+    write_json(intel_out, intel_rows)
+    run_json["artifacts"]["intel_30"] = str(intel_out)
+    run_json["counts"]["intel"] = len(intel_rows)
 
     # D) Dashboard
     try:
@@ -290,6 +330,7 @@ def main() -> None:
 
         scan_table_html = build_scan_table_html(candidates[:20])
         survivors_table_html = build_survivors_table_html(survivors)
+        intel_table_html = build_intel_table_html(intel_rows, top_n=10)
 
         ctx = {
             "engine_name": run_json["engine_name"],
@@ -297,13 +338,13 @@ def main() -> None:
             "created_at_utc": run_json["created_at_utc"],
             "status": run_json["status"],
             "model": run_json["model"],
-            "intel_status": intel_status,
-            "intel_text_ko": intel_text_ko,
             "universe_count": run_json["counts"]["universe"],
             "candidates_count": run_json["counts"]["candidates_raw"],
             "survivors_count": run_json["counts"]["survivors"],
+            "intel_count": run_json["counts"]["intel"],
             "scan_table_html": scan_table_html,
             "survivors_table_html": survivors_table_html,
+            "intel_table_html": intel_table_html,
         }
         build_dashboard_html(dashboard_template, dashboard_out, ctx)
         run_json["artifacts"]["dashboard"] = str(dashboard_out)
