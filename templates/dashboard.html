@@ -12,9 +12,10 @@
     .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; border: 1px solid #ccc; font-size: 12px; }
     pre { white-space: pre-wrap; word-break: break-word; background: #f6f6f6; padding: 12px; border-radius: 10px; }
     table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-    th, td { border-bottom: 1px solid #eee; text-align: left; padding: 8px; font-size: 13px; }
+    th, td { border-bottom: 1px solid #eee; text-align: left; padding: 8px; font-size: 13px; vertical-align: top; }
     th { background: #fafafa; }
     .muted { color: #666; font-size: 12px; }
+    .small { font-size: 12px; color: #333; white-space: pre-wrap; }
   </style>
 </head>
 <body>
@@ -25,20 +26,18 @@
       <div>created_at_utc: <b>{{created_at_utc}}</b></div>
       <div>status: <span class="pill">{{status}}</span></div>
       <div>model: <b>{{model}}</b></div>
-      <div>intel_status: <span class="pill">{{intel_status}}</span></div>
-      <div class="muted">universe: {{universe_count}} / candidates: {{candidates_count}} / survivors: {{survivors_count}}</div>
+      <div class="muted">universe: {{universe_count}} / candidates: {{candidates_count}} / survivors: {{survivors_count}} / intel: {{intel_count}}</div>
     </div>
 
     <h2 style="font-size:16px; margin-top:16px;">Scanner TOP 20</h2>
-    <div class="muted">현재는 외부 가격 데이터 연결 전이라, 결정론적(재현 가능한) 가짜 스캔 결과로 스키마를 고정합니다.</div>
     {{scan_table_html}}
 
     <h2 style="font-size:16px; margin-top:16px;">Survivors TOP 30</h2>
-    <div class="muted">E(Funnel) 모듈 결과. 지금은 낙폭(DD 52w) 기준으로 상위 N개를 정예화합니다.</div>
     {{survivors_table_html}}
 
-    <h2 style="font-size:16px; margin-top:16px;">Intel 요약(한국어)</h2>
-    <pre>{{intel_text_ko}}</pre>
+    <h2 style="font-size:16px; margin-top:16px;">Intel TOP 10</h2>
+    <div class="muted">Gemini 분석 결과 중 SUCCESS 상위 10개만 표시</div>
+    {{intel_table_html}}
   </div>
 </body>
 </html>
