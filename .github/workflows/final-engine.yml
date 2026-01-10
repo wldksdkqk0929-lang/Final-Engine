@@ -3,7 +3,7 @@ name: Final Engine
 on:
   workflow_dispatch:
   schedule:
-    - cron: "5 15 * * *"  # 매일 한국 시간 00:05 실행
+    - cron: "5 15 * * *"
 
 concurrency:
   group: final-engine
@@ -26,7 +26,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # [수정됨] 브랜치 제약 없이 '가장 최근 성공한' 캐시 파일 다운로드
+      # [수정] 브랜치 제한 없이 가장 최근 성공한 실행의 캐시를 가져옴
       - name: Download previous cache artifact
         continue-on-error: true
         uses: dawidd6/action-download-artifact@v6
@@ -35,19 +35,28 @@ jobs:
           workflow: final-engine.yml
           workflow_conclusion: success
           name: final-engine-cache
-          path: .
-          search_artifacts: true  # 모든 아티팩트 검색
+          path: download_cache
+          search_artifacts: true
 
-      # [수정됨] 다운로드된 파일이 있는지 확인하고 원래 위치로 복구
+      # [수정] 다운로드 받은 파일을 제자리로 복구
       - name: Restore cache files
         shell: bash
         run: |
           echo "Restoring cache files..."
-          # 만약 artifact가 다운로드 되었다면 루트 혹은 폴더에 있을 것임
-          if [ -f "data/cache/state.json" ]; then
-            echo "Found cache in data/cache!"
+          if [ -d "download_cache" ]; then
+            # 다운로드된 파일들을 원래 데이터 폴더로 이동
+            mkdir -p data/cache/stooq
+            
+            # 파일이 존재할 경우에만 복사 (오류 방지)
+            [ -f "download_cache/state.json" ] && cp download_cache/state.json data/cache/state.json
+            [ -f "download_cache/coverage_universe.json" ] && cp download_cache/coverage_universe.json data/cache/coverage_universe.json
+            [ -f "download_cache/stooq/state.json" ] && cp download_cache/stooq/state.json data/cache/stooq/state.json
+            [ -f "download_cache/stooq/coverage_universe.json" ] && cp download_cache/stooq/coverage_universe.json data/cache/stooq/coverage_universe.json
+            
+            echo "Cache restoration complete."
+            ls -R data/cache
           else
-            echo "No direct cache found. Checking restore paths..."
+            echo "No previous cache found (First run or download failed). Starting fresh."
           fi
 
       - name: Setup Python
@@ -64,7 +73,7 @@ jobs:
       - name: Run Final Engine
         run: python run.py
 
-      # [중요] 다음 실행을 위해 이번 결과를 반드시 업로드
+      # [중요] 다음 실행을 위해 이번 결과를 반드시 업로드 (덮어쓰기 모드)
       - name: Upload cache artifact (Persistence)
         if: always()
         uses: actions/upload-artifact@v4
@@ -78,7 +87,7 @@ jobs:
             data/cache/stooq/state.json
             data/cache/stooq/coverage_universe.json
 
-      - name: Upload dashboard and logs
+      - name: Upload artifacts (Dashboard/Logs)
         if: always()
         uses: actions/upload-artifact@v4
         with:
