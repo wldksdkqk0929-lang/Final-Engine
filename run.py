@@ -133,4 +133,177 @@ def build_scan_table_html(top_rows: list[dict]) -> str:
 
     head = (
         "<table>"
-        "<thead><tr>
+        "<thead><tr>"
+        "<th>#</th><th>Ticker</th><th>DD(52w)%</th><th>ADV($M)</th><th>Score</th><th>Note</th>"
+        "</tr></thead><tbody>"
+    )
+    body = ""
+    for i, r in enumerate(top_rows, start=1):
+        body += (
+            "<tr>"
+            f"<td>{i}</td>"
+            f"<td><b>{safe_html_escape(r['ticker'])}</b></td>"
+            f"<td>{r['dd_52w_pct']}</td>"
+            f"<td>{r['adv_usd_m']}</td>"
+            f"<td>{r['scan_score']}</td>"
+            f"<td>{safe_html_escape(r.get('note',''))}</td>"
+            "</tr>"
+        )
+    tail = "</tbody></table>"
+    return head + body + tail
+
+
+def main() -> None:
+    cfg = load_config()
+
+    engine_name = cfg["engine"]["name"]
+    model = cfg["engine"]["model"]
+    prompt_ko = cfg["engine"]["prompt_ko"]
+
+    logs_root = Path(cfg["paths"]["logs_root"])
+    universe_out = Path(cfg["paths"]["universe_out"])
+    candidates_out = Path(cfg["paths"]["candidates_out"])
+    intel_out = Path(cfg["paths"]["intel_out"])
+    dashboard_out = Path(cfg["paths"]["dashboard_out"])
+    dashboard_template = Path(cfg["paths"]["dashboard_template"])
+
+    test_ticker = cfg["run"]["test_ticker"]
+
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    run_id = f"{ts}_{uuid.uuid4().hex[:8]}"
+    run_dir = logs_root / run_id
+    ensure_dir(run_dir)
+
+    run_json = {
+        "engine_name": engine_name,
+        "run_id": run_id,
+        "created_at_utc": now_utc_iso(),
+        "status": "STARTED",
+        "engine": cfg["engine"]["provider"],
+        "model": model,
+        "config_path": cfg["_meta"]["config_path"],
+        "config_loaded": cfg["_meta"]["config_loaded"],
+        "artifacts": {},
+        "errors": [],
+        "counts": {},
+    }
+
+    # A) Universe
+    tickers = load_universe_seed()
+    universe_obj = {
+        "source": "seed",
+        "created_at_utc": now_utc_iso(),
+        "count": len(tickers),
+        "tickers": tickers,
+    }
+    write_json(universe_out, universe_obj)
+    run_json["artifacts"]["universe"] = str(universe_out)
+    run_json["counts"]["universe"] = len(tickers)
+
+    # B) Scanner (FAKE)
+    candidates = fake_scan_candidates(tickers)
+    candidates_obj = {
+        "source": "fake_scan",
+        "created_at_utc": now_utc_iso(),
+        "count": len(candidates),
+        "rows": candidates,
+    }
+    write_json(candidates_out, candidates_obj)
+    run_json["artifacts"]["candidates_raw"] = str(candidates_out)
+    run_json["counts"]["candidates_raw"] = len(candidates)
+
+    # C) Intel
+    intel_status = "SKIPPED"
+    intel_text_ko = "초기 상태: 인텔 없음"
+
+    gemini_key = os.getenv("GEMINI_API_KEY", "")
+
+    if not gemini_key:
+        intel = [{
+            "ticker": test_ticker,
+            "status": "SKIPPED",
+            "reason": "GEMINI_API_KEY not set",
+            "text_ko": "Gemini API 키가 설정되지 않아 인텔 모듈을 건너뜀."
+        }]
+        write_json(intel_out, intel)
+        intel_status = "SKIPPED"
+        intel_text_ko = intel[0]["text_ko"]
+        run_json["status"] = "SUCCESS_WITHOUT_INTEL"
+        run_json["artifacts"]["intel_30"] = str(intel_out)
+
+    else:
+        try:
+            from google import genai
+            client = genai.Client()
+
+            resp = client.models.generate_content(
+                model=model,
+                contents=prompt_ko,
+            )
+
+            text = (resp.text or "").strip()
+            if not text:
+                raise RuntimeError("Empty response text")
+
+            intel = [{
+                "ticker": test_ticker,
+                "status": "SUCCESS",
+                "reason": None,
+                "text_ko": text,
+            }]
+            write_json(intel_out, intel)
+
+            intel_status = "SUCCESS"
+            intel_text_ko = text
+
+            run_json["status"] = "SUCCESS"
+            run_json["artifacts"]["intel_30"] = str(intel_out)
+
+        except Exception as e:
+            intel = [{
+                "ticker": test_ticker,
+                "status": "FAILED",
+                "reason": repr(e),
+                "text_ko": "Gemini 호출 실패. 기술 모드로 대체 필요."
+            }]
+            write_json(intel_out, intel)
+
+            intel_status = "FAILED"
+            intel_text_ko = intel[0]["text_ko"]
+
+            run_json["status"] = "SUCCESS_WITH_INTEL_FAILED"
+            run_json["artifacts"]["intel_30"] = str(intel_out)
+            run_json["errors"].append(repr(e))
+
+    # D) Dashboard (무조건)
+    try:
+        if not dashboard_template.exists():
+            raise FileNotFoundError(f"Missing template: {dashboard_template}")
+
+        top20 = candidates[:20]
+        scan_table_html = build_scan_table_html(top20)
+
+        ctx = {
+            "engine_name": run_json["engine_name"],
+            "run_id": run_json["run_id"],
+            "created_at_utc": run_json["created_at_utc"],
+            "status": run_json["status"],
+            "model": run_json["model"],
+            "intel_status": intel_status,
+            "intel_text_ko": intel_text_ko,
+            "universe_count": run_json["counts"]["universe"],
+            "candidates_count": run_json["counts"]["candidates_raw"],
+            "scan_table_html": scan_table_html,
+        }
+        build_dashboard_html(dashboard_template, dashboard_out, ctx)
+        run_json["artifacts"]["dashboard"] = str(dashboard_out)
+
+    except Exception as e:
+        run_json["errors"].append(f"dashboard_error:{repr(e)}")
+
+    write_json(run_dir / "run.json", run_json)
+    print(f"[OK] run_id={run_id} status={run_json['status']}")
+
+
+if __name__ == "__main__":
+    main()
