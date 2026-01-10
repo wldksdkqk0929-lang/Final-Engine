@@ -20,7 +20,15 @@ paths:
   dashboard_out: "data/artifacts/dashboard/index.html"
   dashboard_template: "templates/dashboard.html"
 
+# A: Universe 자동 수집 설정
+universe:
+  provider: "nasdaqtrader"   # "nasdaqtrader" or "seed"
+  exclude_etf: true
+  max_symbols: 6500          # 유니버스 상한(너무 크면 여기로 컷)
+
 run:
+  # 시간 폭발 방지: 유니버스는 5000+ 만들되, 스캔은 여기만큼만 먼저 돈다
+  scan_limit: 800
   intel_n: 30
 
 scanner:
@@ -32,9 +40,7 @@ scanner:
 
 funnel:
   survivors_n: 30
-
-  # 8대 필터 중 "지금 바로 수치화 가능한 것"만 먼저 적용
-  min_price_usd: 5.0          # 페니 제거
-  min_adv_usd_m: 20.0         # 유동성(거래대금) 컷
-  min_dd_52w_pct: -95.0       # 너무 극단적(데이터 이상치) 제외용 하한
-  max_dd_52w_pct: -15.0       # 낙폭이 너무 약하면 제외(턴어라운드 대상 아님)
+  min_price_usd: 5.0
+  min_adv_usd_m: 20.0
+  min_dd_52w_pct: -95.0
+  max_dd_52w_pct: -15.0
