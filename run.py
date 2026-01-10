@@ -10,6 +10,10 @@ import yaml
 import requests
 
 
+NASDQ_NASDAQTRADED_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqtraded.txt"
+NASDQ_OTHERLISTED_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt"
+
+
 def now_utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -60,7 +64,15 @@ def load_config() -> dict:
             "dashboard_out": "data/artifacts/dashboard/index.html",
             "dashboard_template": "templates/dashboard.html",
         },
-        "run": {"intel_n": 30},
+        "universe": {
+            "provider": "nasdaqtrader",
+            "exclude_etf": True,
+            "max_symbols": 6500,
+        },
+        "run": {
+            "scan_limit": 800,
+            "intel_n": 30,
+        },
         "scanner": {
             "provider": "stooq",
             "lookback_days": 365,
@@ -72,10 +84,13 @@ def load_config() -> dict:
             "survivors_n": 30,
             "min_price_usd": 5.0,
             "min_adv_usd_m": 20.0,
-            "min_dd_52w_pct": -80.0,
-            "max_dd_52w_pct": -25.0,
+            "min_dd_52w_pct": -95.0,
+            "max_dd_52w_pct": -15.0,
         },
-        "_meta": {"config_path": config_path, "config_loaded": False},
+        "_meta": {
+            "config_path": config_path,
+            "config_loaded": False,
+        },
     }
 
     if not p.exists():
@@ -84,7 +99,7 @@ def load_config() -> dict:
     try:
         loaded = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
         cfg = default_cfg
-        for top_key in ("engine", "paths", "run", "scanner", "funnel"):
+        for top_key in ("engine", "paths", "universe", "run", "scanner", "funnel"):
             if isinstance(loaded.get(top_key), dict):
                 cfg[top_key].update(loaded[top_key])
         cfg["_meta"]["config_loaded"] = True
@@ -131,6 +146,135 @@ def load_universe_seed() -> list[str]:
         return []
 
 
+def _download_text(url: str, timeout_sec: int) -> str:
+    r = requests.get(url, timeout=timeout_sec)
+    r.raise_for_status()
+    return r.text
+
+
+def _is_equity_like(symbol: str, name: str) -> bool:
+    # 너무 특수한 종목(우선주/워런트/권리/유닛/노트 등) 제외: 데이터 실패율 급감 목적
+    n = (name or "").lower()
+
+    bad_keywords = [
+        "warrant", "warrants",
+        "rights",
+        "units",
+        "preferred",
+        "depositary",
+        "note", "notes",
+        "bond", "bonds",
+        "trust",
+        "etn",
+    ]
+    if any(k in n for k in bad_keywords):
+        return False
+
+    # 심볼에 '^' 같은 비정상 문자가 있으면 제외
+    for ch in ["^", " ", "/"]:
+        if ch in symbol:
+            return False
+
+    return True
+
+
+def fetch_universe_nasdaqtrader(exclude_etf: bool, max_symbols: int, timeout_sec: int = 20) -> dict:
+    """
+    nasdaqtrader 심볼 디렉토리로 NASDAQ/NYSE/AMEX 포함 유니버스 구성
+    - nasdaqtraded.txt + otherlisted.txt 합침
+    - Test Issue 제외
+    - ETF 제외 옵션
+    - 특수증권 일부 제외(우선주/워런트 등)
+    """
+    meta = {
+        "provider": "nasdaqtrader",
+        "exclude_etf": exclude_etf,
+        "max_symbols": max_symbols,
+        "sources": [NASDQ_NASDAQTRADED_URL, NASDQ_OTHERLISTED_URL],
+        "counts": {"nasdaqtraded": 0, "otherlisted": 0, "merged": 0},
+        "dropped": {"test_issue": 0, "etf": 0, "non_equity_like": 0},
+    }
+
+    tickers = set()
+
+    # 1) nasdaqtraded.txt
+    txt1 = _download_text(NASDQ_NASDAQTRADED_URL, timeout_sec=timeout_sec)
+    lines1 = [ln for ln in txt1.splitlines() if ln and "|" in ln]
+    if not lines1:
+        raise RuntimeError("nasdaqtraded.txt empty")
+
+    header1 = lines1[0].split("|")
+    for ln in lines1[1:]:
+        if ln.startswith("File Creation Time") or ln.startswith("Number of Symbols"):
+            continue
+        parts = ln.split("|")
+        if len(parts) != len(header1):
+            continue
+        row = dict(zip(header1, parts))
+        sym = (row.get("Symbol") or "").strip().upper()
+        name = (row.get("Security Name") or "").strip()
+        test_issue = (row.get("Test Issue") or "").strip().upper()
+        etf = (row.get("ETF") or "").strip().upper()
+
+        if not sym:
+            continue
+        meta["counts"]["nasdaqtraded"] += 1
+
+        if test_issue == "Y":
+            meta["dropped"]["test_issue"] += 1
+            continue
+        if exclude_etf and etf == "Y":
+            meta["dropped"]["etf"] += 1
+            continue
+        if not _is_equity_like(sym, name):
+            meta["dropped"]["non_equity_like"] += 1
+            continue
+
+        tickers.add(sym)
+
+    # 2) otherlisted.txt
+    txt2 = _download_text(NASDQ_OTHERLISTED_URL, timeout_sec=timeout_sec)
+    lines2 = [ln for ln in txt2.splitlines() if ln and "|" in ln]
+    if not lines2:
+        raise RuntimeError("otherlisted.txt empty")
+
+    header2 = lines2[0].split("|")
+    for ln in lines2[1:]:
+        if ln.startswith("File Creation Time") or ln.startswith("Number of Symbols"):
+            continue
+        parts = ln.split("|")
+        if len(parts) != len(header2):
+            continue
+        row = dict(zip(header2, parts))
+        sym = (row.get("ACT Symbol") or "").strip().upper()
+        name = (row.get("Security Name") or "").strip()
+        test_issue = (row.get("Test Issue") or "").strip().upper()
+        etf = (row.get("ETF") or "").strip().upper()
+
+        if not sym:
+            continue
+        meta["counts"]["otherlisted"] += 1
+
+        if test_issue == "Y":
+            meta["dropped"]["test_issue"] += 1
+            continue
+        if exclude_etf and etf == "Y":
+            meta["dropped"]["etf"] += 1
+            continue
+        if not _is_equity_like(sym, name):
+            meta["dropped"]["non_equity_like"] += 1
+            continue
+
+        tickers.add(sym)
+
+    merged = sorted(tickers)
+    if max_symbols and len(merged) > int(max_symbols):
+        merged = merged[: int(max_symbols)]
+
+    meta["counts"]["merged"] = len(merged)
+    return {"meta": meta, "tickers": merged}
+
+
 def fake_metrics_for_ticker(ticker: str) -> dict:
     score = sum(ord(c) for c in ticker) % 100
     dd_52w = round(-1.0 * (20 + (score * 0.6)), 2)
@@ -169,6 +313,7 @@ def fetch_stooq_daily(ticker: str, timeout_sec: int) -> list[dict] | None:
                 })
             except Exception:
                 continue
+
         if not rows:
             return None
         return rows
@@ -268,16 +413,10 @@ def build_scan_table_html(top_rows: list[dict]) -> str:
 
 
 def apply_funnel_filters(candidates: list[dict], funnel_cfg: dict) -> tuple[list[dict], dict]:
-    """
-    지금 바로 수치화 가능한 필터:
-    - 가격: last_close >= min_price_usd (last_close 없는 경우 제외)
-    - 유동성: adv_usd_m >= min_adv_usd_m
-    - 낙폭 구간: min_dd_52w_pct <= dd_52w_pct <= max_dd_52w_pct (둘 다 음수)
-    """
     min_price = float(funnel_cfg.get("min_price_usd", 5.0))
     min_adv = float(funnel_cfg.get("min_adv_usd_m", 20.0))
-    min_dd = float(funnel_cfg.get("min_dd_52w_pct", -80.0))
-    max_dd = float(funnel_cfg.get("max_dd_52w_pct", -25.0))
+    min_dd = float(funnel_cfg.get("min_dd_52w_pct", -95.0))
+    max_dd = float(funnel_cfg.get("max_dd_52w_pct", -15.0))
 
     kept = []
     drop_reasons = {"price": 0, "adv": 0, "dd": 0, "nodata": 0}
@@ -302,7 +441,6 @@ def apply_funnel_filters(candidates: list[dict], funnel_cfg: dict) -> tuple[list
 
         kept.append(r)
 
-    # 우선순위: 낙폭 큰 순 → ADV 큰 순
     kept.sort(key=lambda r: (r.get("dd_52w_pct", 0.0), -r.get("adv_usd_m", 0.0)))
     stats = {
         "min_price_usd": min_price,
@@ -322,7 +460,6 @@ def pick_survivors(candidates: list[dict], funnel_cfg: dict) -> tuple[list[dict]
 
     survivors = filtered[:target_n]
 
-    # 부족하면(필터가 너무 빡세면) 원본 후보에서 DD순으로 채움(무정지)
     if len(survivors) < target_n:
         already = {r["ticker"] for r in survivors}
         for r in candidates:
@@ -417,9 +554,13 @@ def main() -> None:
     dashboard_out = Path(cfg["paths"]["dashboard_out"])
     dashboard_template = Path(cfg["paths"]["dashboard_template"])
 
-    intel_n = int(cfg["run"]["intel_n"])
+    universe_cfg = cfg.get("universe", {})
+    run_cfg = cfg.get("run", {})
     scanner_cfg = cfg.get("scanner", {})
     funnel_cfg = cfg.get("funnel", {})
+
+    scan_limit = int(run_cfg.get("scan_limit", 800))
+    intel_n = int(run_cfg.get("intel_n", 30))
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     run_id = f"{ts}_{uuid.uuid4().hex[:8]}"
@@ -440,22 +581,50 @@ def main() -> None:
         "counts": {},
         "scanner_stats": {},
         "funnel_stats": {},
+        "universe_meta": {},
     }
 
-    # A) Universe
-    tickers = load_universe_seed()
-    write_json(universe_out, {"source": "seed", "created_at_utc": now_utc_iso(), "count": len(tickers), "tickers": tickers})
+    # A) Universe (auto)
+    provider = str(universe_cfg.get("provider", "nasdaqtrader")).lower()
+    exclude_etf = bool(universe_cfg.get("exclude_etf", True))
+    max_symbols = int(universe_cfg.get("max_symbols", 6500))
+
+    if provider == "seed":
+        tickers_all = load_universe_seed()
+        run_json["universe_meta"] = {"provider": "seed", "count": len(tickers_all)}
+    else:
+        uni = fetch_universe_nasdaqtrader(exclude_etf=exclude_etf, max_symbols=max_symbols)
+        tickers_all = uni["tickers"]
+        run_json["universe_meta"] = uni["meta"]
+
+    # 유니버스는 전체 저장
+    write_json(universe_out, {
+        "source": provider,
+        "created_at_utc": now_utc_iso(),
+        "count": len(tickers_all),
+        "meta": run_json["universe_meta"],
+        "tickers": tickers_all
+    })
     run_json["artifacts"]["universe"] = str(universe_out)
-    run_json["counts"]["universe"] = len(tickers)
+    run_json["counts"]["universe_total"] = len(tickers_all)
+
+    # 스캔은 scan_limit만(시간 폭발 방지)
+    tickers_scan = tickers_all[: max(0, scan_limit)]
+    run_json["counts"]["universe_scanned"] = len(tickers_scan)
 
     # B) Candidates
-    candidates, scan_stats = build_candidates(tickers, scanner_cfg)
-    write_json(candidates_out, {"source": f"scanner_{scan_stats.get('provider','')}", "created_at_utc": now_utc_iso(), "count": len(candidates), "rows": candidates})
+    candidates, scan_stats = build_candidates(tickers_scan, scanner_cfg)
+    write_json(candidates_out, {
+        "source": f"scanner_{scan_stats.get('provider','')}",
+        "created_at_utc": now_utc_iso(),
+        "count": len(candidates),
+        "rows": candidates
+    })
     run_json["artifacts"]["candidates_raw"] = str(candidates_out)
     run_json["counts"]["candidates_raw"] = len(candidates)
     run_json["scanner_stats"] = scan_stats
 
-    # E) Survivors (필터 기반)
+    # E) Survivors
     survivors, funnel_stats = pick_survivors(candidates, funnel_cfg)
     run_json["funnel_stats"] = funnel_stats
 
@@ -467,8 +636,8 @@ def main() -> None:
             "survivors_n": int(funnel_cfg.get("survivors_n", 30)),
             "min_price_usd": float(funnel_cfg.get("min_price_usd", 5.0)),
             "min_adv_usd_m": float(funnel_cfg.get("min_adv_usd_m", 20.0)),
-            "min_dd_52w_pct": float(funnel_cfg.get("min_dd_52w_pct", -80.0)),
-            "max_dd_52w_pct": float(funnel_cfg.get("max_dd_52w_pct", -25.0)),
+            "min_dd_52w_pct": float(funnel_cfg.get("min_dd_52w_pct", -95.0)),
+            "max_dd_52w_pct": float(funnel_cfg.get("max_dd_52w_pct", -15.0)),
         },
         "stats": funnel_stats,
         "rows": survivors
@@ -511,13 +680,14 @@ def main() -> None:
         survivors_table_html = build_survivors_table_html(survivors)
         intel_table_html = build_intel_table_html(intel_rows, top_n=10)
 
+        # 기존 템플릿 호환: universe_count는 "스캔 대상" 기준으로 표시
         ctx = {
             "engine_name": run_json["engine_name"],
             "run_id": run_json["run_id"],
             "created_at_utc": run_json["created_at_utc"],
             "status": run_json["status"],
             "model": run_json["model"],
-            "universe_count": run_json["counts"]["universe"],
+            "universe_count": run_json["counts"]["universe_scanned"],
             "candidates_count": run_json["counts"]["candidates_raw"],
             "survivors_count": run_json["counts"]["survivors"],
             "intel_count": run_json["counts"]["intel"],
@@ -531,7 +701,14 @@ def main() -> None:
         run_json["errors"].append(f"dashboard_error:{repr(e)}")
 
     write_json(run_dir / "run.json", run_json)
-    print(f"[OK] run_id={run_id} status={run_json['status']} scanner={run_json.get('scanner_stats',{})} funnel={run_json.get('funnel_stats',{})}")
+    print(
+        "[OK] "
+        f"run_id={run_id} status={run_json['status']} "
+        f"universe_total={run_json['counts'].get('universe_total')} "
+        f"scanned={run_json['counts'].get('universe_scanned')} "
+        f"scanner={run_json.get('scanner_stats',{})} "
+        f"funnel={run_json.get('funnel_stats',{})}"
+    )
 
 
 if __name__ == "__main__":
