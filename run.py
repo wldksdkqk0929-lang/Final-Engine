@@ -42,6 +42,7 @@ def load_config() -> dict:
         },
         "paths": {
             "logs_root": "data/logs/runs",
+            "universe_out": "data/processed/universe/universe.json",
             "intel_out": "data/processed/intel_30/intel_30.json",
             "dashboard_out": "data/artifacts/dashboard/index.html",
             "dashboard_template": "templates/dashboard.html",
@@ -81,26 +82,24 @@ def safe_html_escape(s: str) -> str:
 
 def build_dashboard_html(template_path: Path, out_path: Path, context: dict) -> None:
     tpl = read_text(template_path)
-
-    def get(k: str, default: str = "") -> str:
-        v = context.get(k, default)
-        if v is None:
-            return ""
-        return str(v)
-
     html = tpl
-    for key in [
-        "engine_name",
-        "run_id",
-        "created_at_utc",
-        "status",
-        "model",
-        "intel_status",
-        "intel_text_ko",
-    ]:
-        html = html.replace(f"{{{{{key}}}}}", safe_html_escape(get(key)))
-
+    for key, val in context.items():
+        html = html.replace(f"{{{{{key}}}}}", safe_html_escape(str(val if val is not None else "")))
     write_text(out_path, html)
+
+
+def load_universe_seed() -> list[str]:
+    seed_path = Path("data/raw/universe/universe_seed.json")
+    if not seed_path.exists():
+        return []
+    try:
+        obj = json.loads(seed_path.read_text(encoding="utf-8"))
+        tickers = obj.get("tickers", [])
+        # 중복 제거 + 정렬
+        tickers = sorted({t.strip().upper() for t in tickers if isinstance(t, str) and t.strip()})
+        return tickers
+    except Exception:
+        return []
 
 
 def main() -> None:
@@ -111,6 +110,7 @@ def main() -> None:
     prompt_ko = cfg["engine"]["prompt_ko"]
 
     logs_root = Path(cfg["paths"]["logs_root"])
+    universe_out = Path(cfg["paths"]["universe_out"])
     intel_out = Path(cfg["paths"]["intel_out"])
     dashboard_out = Path(cfg["paths"]["dashboard_out"])
     dashboard_template = Path(cfg["paths"]["dashboard_template"])
@@ -133,8 +133,22 @@ def main() -> None:
         "config_loaded": cfg["_meta"]["config_loaded"],
         "artifacts": {},
         "errors": [],
+        "counts": {},
     }
 
+    # A) Universe (seed 기반)
+    tickers = load_universe_seed()
+    universe_obj = {
+        "source": "seed",
+        "created_at_utc": now_utc_iso(),
+        "count": len(tickers),
+        "tickers": tickers,
+    }
+    write_json(universe_out, universe_obj)
+    run_json["artifacts"]["universe"] = str(universe_out)
+    run_json["counts"]["universe"] = len(tickers)
+
+    # C) Intel (기존과 동일)
     intel_status = "SKIPPED"
     intel_text_ko = "초기 상태: 인텔 없음"
 
@@ -198,7 +212,7 @@ def main() -> None:
             run_json["artifacts"]["intel_30"] = str(intel_out)
             run_json["errors"].append(repr(e))
 
-    # Dashboard는 무조건 생성
+    # D) Dashboard는 무조건 생성
     try:
         if not dashboard_template.exists():
             raise FileNotFoundError(f"Missing template: {dashboard_template}")
@@ -217,7 +231,6 @@ def main() -> None:
 
     except Exception as e:
         run_json["errors"].append(f"dashboard_error:{repr(e)}")
-        # 그래도 run.json은 남김
 
     write_json(run_dir / "run.json", run_json)
     print(f"[OK] run_id={run_id} status={run_json['status']}")
