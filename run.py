@@ -20,6 +20,15 @@ def write_json(path: Path, obj) -> None:
     path.write_text(json.dumps(obj, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def read_text(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+def write_text(path: Path, text: str) -> None:
+    ensure_dir(path.parent)
+    path.write_text(text, encoding="utf-8")
+
+
 def load_config() -> dict:
     config_path = os.getenv("FINAL_ENGINE_CONFIG", "config/base.yaml")
     p = Path(config_path)
@@ -34,6 +43,8 @@ def load_config() -> dict:
         "paths": {
             "logs_root": "data/logs/runs",
             "intel_out": "data/processed/intel_30/intel_30.json",
+            "dashboard_out": "data/artifacts/dashboard/index.html",
+            "dashboard_template": "templates/dashboard.html",
         },
         "run": {
             "test_ticker": "TEST",
@@ -50,18 +61,46 @@ def load_config() -> dict:
     try:
         loaded = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
         cfg = default_cfg
-
-        # shallow merge (필요한 키만 덮어쓰기)
         for top_key in ("engine", "paths", "run"):
             if isinstance(loaded.get(top_key), dict):
                 cfg[top_key].update(loaded[top_key])
-
         cfg["_meta"]["config_loaded"] = True
         return cfg
-
     except Exception:
-        # 설정 파싱이 깨져도 시스템은 멈추지 않음
         return default_cfg
+
+
+def safe_html_escape(s: str) -> str:
+    return (
+        s.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
+def build_dashboard_html(template_path: Path, out_path: Path, context: dict) -> None:
+    tpl = read_text(template_path)
+
+    def get(k: str, default: str = "") -> str:
+        v = context.get(k, default)
+        if v is None:
+            return ""
+        return str(v)
+
+    html = tpl
+    for key in [
+        "engine_name",
+        "run_id",
+        "created_at_utc",
+        "status",
+        "model",
+        "intel_status",
+        "intel_text_ko",
+    ]:
+        html = html.replace(f"{{{{{key}}}}}", safe_html_escape(get(key)))
+
+    write_text(out_path, html)
 
 
 def main() -> None:
@@ -73,12 +112,13 @@ def main() -> None:
 
     logs_root = Path(cfg["paths"]["logs_root"])
     intel_out = Path(cfg["paths"]["intel_out"])
+    dashboard_out = Path(cfg["paths"]["dashboard_out"])
+    dashboard_template = Path(cfg["paths"]["dashboard_template"])
+
     test_ticker = cfg["run"]["test_ticker"]
 
-    # run_id (재현/추적용)
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     run_id = f"{ts}_{uuid.uuid4().hex[:8]}"
-
     run_dir = logs_root / run_id
     ensure_dir(run_dir)
 
@@ -95,7 +135,9 @@ def main() -> None:
         "errors": [],
     }
 
-    # Gemini 호출 (실패해도 멈추지 않음)
+    intel_status = "SKIPPED"
+    intel_text_ko = "초기 상태: 인텔 없음"
+
     gemini_key = os.getenv("GEMINI_API_KEY", "")
 
     if not gemini_key:
@@ -106,51 +148,76 @@ def main() -> None:
             "text_ko": "Gemini API 키가 설정되지 않아 인텔 모듈을 건너뜀."
         }]
         write_json(intel_out, intel)
+        intel_status = "SKIPPED"
+        intel_text_ko = intel[0]["text_ko"]
 
         run_json["status"] = "SUCCESS_WITHOUT_INTEL"
         run_json["artifacts"]["intel_30"] = str(intel_out)
-        write_json(run_dir / "run.json", run_json)
 
-        print(f"[OK] run_id={run_id} (intel skipped)")
-        return
+    else:
+        try:
+            from google import genai
+            client = genai.Client()
 
+            resp = client.models.generate_content(
+                model=model,
+                contents=prompt_ko,
+            )
+
+            text = (resp.text or "").strip()
+            if not text:
+                raise RuntimeError("Empty response text")
+
+            intel = [{
+                "ticker": test_ticker,
+                "status": "SUCCESS",
+                "reason": None,
+                "text_ko": text,
+            }]
+            write_json(intel_out, intel)
+
+            intel_status = "SUCCESS"
+            intel_text_ko = text
+
+            run_json["status"] = "SUCCESS"
+            run_json["artifacts"]["intel_30"] = str(intel_out)
+
+        except Exception as e:
+            intel = [{
+                "ticker": test_ticker,
+                "status": "FAILED",
+                "reason": repr(e),
+                "text_ko": "Gemini 호출 실패. 기술 모드로 대체 필요."
+            }]
+            write_json(intel_out, intel)
+
+            intel_status = "FAILED"
+            intel_text_ko = intel[0]["text_ko"]
+
+            run_json["status"] = "SUCCESS_WITH_INTEL_FAILED"
+            run_json["artifacts"]["intel_30"] = str(intel_out)
+            run_json["errors"].append(repr(e))
+
+    # Dashboard는 무조건 생성
     try:
-        from google import genai  # google-genai SDK
+        if not dashboard_template.exists():
+            raise FileNotFoundError(f"Missing template: {dashboard_template}")
 
-        client = genai.Client()  # GEMINI_API_KEY 환경변수에서 자동 인식
-
-        resp = client.models.generate_content(
-            model=model,
-            contents=prompt_ko,
-        )
-
-        text = (resp.text or "").strip()
-        if not text:
-            raise RuntimeError("Empty response text")
-
-        intel = [{
-            "ticker": test_ticker,
-            "status": "SUCCESS",
-            "reason": None,
-            "text_ko": text,
-        }]
-        write_json(intel_out, intel)
-
-        run_json["status"] = "SUCCESS"
-        run_json["artifacts"]["intel_30"] = str(intel_out)
+        ctx = {
+            "engine_name": run_json["engine_name"],
+            "run_id": run_json["run_id"],
+            "created_at_utc": run_json["created_at_utc"],
+            "status": run_json["status"],
+            "model": run_json["model"],
+            "intel_status": intel_status,
+            "intel_text_ko": intel_text_ko,
+        }
+        build_dashboard_html(dashboard_template, dashboard_out, ctx)
+        run_json["artifacts"]["dashboard"] = str(dashboard_out)
 
     except Exception as e:
-        intel = [{
-            "ticker": test_ticker,
-            "status": "FAILED",
-            "reason": repr(e),
-            "text_ko": "Gemini 호출 실패. 기술 모드로 대체 필요."
-        }]
-        write_json(intel_out, intel)
-
-        run_json["status"] = "SUCCESS_WITH_INTEL_FAILED"
-        run_json["artifacts"]["intel_30"] = str(intel_out)
-        run_json["errors"].append(repr(e))
+        run_json["errors"].append(f"dashboard_error:{repr(e)}")
+        # 그래도 run.json은 남김
 
     write_json(run_dir / "run.json", run_json)
     print(f"[OK] run_id={run_id} status={run_json['status']}")
