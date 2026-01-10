@@ -8,9 +8,15 @@ paths:
   logs_root: "data/logs/runs"
   universe_out: "data/processed/universe/universe.json"
   candidates_out: "data/processed/candidates_raw/candidates_raw.json"
+  survivors_out: "data/processed/survivors/survivors.json"
   intel_out: "data/processed/intel_30/intel_30.json"
   dashboard_out: "data/artifacts/dashboard/index.html"
   dashboard_template: "templates/dashboard.html"
 
 run:
   test_ticker: "TEST"
+
+funnel:
+  survivors_n: 30
+  # 지금은 가짜 스캔이므로 규칙을 단순화: 낙폭이 큰 순으로 상위 N개
+  sort_key: "dd_52w_pct"
