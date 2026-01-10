@@ -24,12 +24,17 @@ run:
   intel_n: 30
 
 scanner:
-  provider: "stooq"        # "stooq" or "fake"
-  lookback_days: 365       # 52주 근사
-  adv_window: 20           # ADV 계산 기간(거래일)
+  provider: "stooq"
+  lookback_days: 365
+  adv_window: 20
   timeout_sec: 12
-  fallback_to_fake: true   # 티커별 실패 시 FAKE로 폴백
+  fallback_to_fake: true
 
 funnel:
   survivors_n: 30
-  sort_key: "dd_52w_pct"
+
+  # 8대 필터 중 "지금 바로 수치화 가능한 것"만 먼저 적용
+  min_price_usd: 5.0          # 페니 제거
+  min_adv_usd_m: 20.0         # 유동성(거래대금) 컷
+  min_dd_52w_pct: -80.0       # 너무 극단적(데이터 이상치) 제외용 하한
+  max_dd_52w_pct: -25.0       # 낙폭이 너무 약하면 제외(턴어라운드 대상 아님)
