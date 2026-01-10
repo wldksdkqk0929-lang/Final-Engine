@@ -129,7 +129,8 @@ def load_config() -> dict:
 
 def safe_html_escape(s: str) -> str:
     return (
-        s.replace("&", "&amp;")
+        (s or "")
+        .replace("&", "&amp;")
         .replace("<", "&lt;")
         .replace(">", "&gt;")
         .replace('"', "&quot;")
@@ -191,7 +192,6 @@ def fetch_universe_nasdaqtrader(exclude_etf: bool, max_symbols: int, timeout_sec
 
     tickers = set()
 
-    # 1) nasdaqtraded
     txt1 = _download_text(NASDQ_NASDAQTRADED_URL, timeout_sec=timeout_sec)
     lines1 = [ln for ln in txt1.splitlines() if ln and "|" in ln]
     if not lines1:
@@ -226,7 +226,6 @@ def fetch_universe_nasdaqtrader(exclude_etf: bool, max_symbols: int, timeout_sec
 
         tickers.add(sym)
 
-    # 2) otherlisted
     txt2 = _download_text(NASDQ_OTHERLISTED_URL, timeout_sec=timeout_sec)
     lines2 = [ln for ln in txt2.splitlines() if ln and "|" in ln]
     if not lines2:
@@ -305,7 +304,6 @@ def _http_get_text_with_retries(url: str, timeout_sec: int, retries: int) -> str
 
 
 def fetch_stooq_csv_text(ticker: str, timeout_sec: int, retries: int) -> str | None:
-    # stooq는 보통 BRK.B 같은 점 표기를 싫어함 -> '-'로도 시도
     variants = []
     t = ticker.lower()
     variants.append(f"{t}.us")
@@ -380,10 +378,10 @@ def get_stooq_metrics_with_cache(
     timeout_sec: int,
     retries: int,
     cache_ttl_hours: int,
+    stooq_cache_dir: Path,
 ) -> tuple[dict | None, bool]:
-    cache_dir = Path("data/cache/stooq")
-    ensure_dir(cache_dir)
-    cache_path = cache_dir / f"{ticker.upper()}.csv"
+    ensure_dir(stooq_cache_dir)
+    cache_path = stooq_cache_dir / f"{ticker.upper()}.csv"
 
     cached = False
     csv_text = None
@@ -415,7 +413,7 @@ def get_stooq_metrics_with_cache(
     return m, cached
 
 
-def _metrics_for_one_ticker(ticker: str, scanner_cfg: dict) -> tuple[str, dict, dict, bool]:
+def _metrics_for_one_ticker(ticker: str, scanner_cfg: dict, stooq_cache_dir: Path) -> tuple[str, dict, dict, bool]:
     provider = str(scanner_cfg.get("provider", "stooq")).lower()
     timeout_sec = int(scanner_cfg.get("timeout_sec", 20))
     adv_window = int(scanner_cfg.get("adv_window", 20))
@@ -437,6 +435,7 @@ def _metrics_for_one_ticker(ticker: str, scanner_cfg: dict) -> tuple[str, dict, 
         timeout_sec=timeout_sec,
         retries=retries,
         cache_ttl_hours=cache_ttl_hours,
+        stooq_cache_dir=stooq_cache_dir,
     )
     if cached and m is not None:
         local_stats["cache_hit"] += 1
@@ -459,7 +458,7 @@ def _metrics_for_one_ticker(ticker: str, scanner_cfg: dict) -> tuple[str, dict, 
     return ticker, m, local_stats, is_real
 
 
-def build_candidates(tickers: list[str], scanner_cfg: dict) -> tuple[list[dict], dict, list[str]]:
+def build_candidates(tickers: list[str], scanner_cfg: dict, stooq_cache_dir: Path) -> tuple[list[dict], dict, list[str]]:
     provider = str(scanner_cfg.get("provider", "stooq")).lower()
     max_workers = int(scanner_cfg.get("max_workers", 4))
 
@@ -468,7 +467,7 @@ def build_candidates(tickers: list[str], scanner_cfg: dict) -> tuple[list[dict],
     stats = {"real": 0, "fallback": 0, "nodata": 0, "cache_hit": 0, "provider": provider}
 
     with ThreadPoolExecutor(max_workers=max_workers) as ex:
-        futs = {ex.submit(_metrics_for_one_ticker, t, scanner_cfg): t for t in tickers}
+        futs = {ex.submit(_metrics_for_one_ticker, t, scanner_cfg, stooq_cache_dir): t for t in tickers}
         for fut in as_completed(futs):
             t = futs[fut]
             try:
@@ -603,16 +602,43 @@ def render_prompt(template: str, ticker: str) -> str:
     return template.replace("{{ticker}}", ticker)
 
 
-def run_intel_for_ticker(client, model: str, prompt_template: str, ticker: str) -> dict:
-    prompt = render_prompt(prompt_template, ticker)
+def gemini_generate(api_key: str, model: str, prompt: str, timeout: int = 80) -> str:
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.4, "maxOutputTokens": 600},
+    }
+    r = requests.post(url, json=payload, timeout=timeout)
+    r.raise_for_status()
+    data = r.json()
     try:
-        resp = client.models.generate_content(model=model, contents=prompt)
-        text = (resp.text or "").strip()
-        if not text:
-            raise RuntimeError("Empty response text")
-        return {"ticker": ticker, "status": "SUCCESS", "reason": None, "text_ko": text}
-    except Exception as e:
-        return {"ticker": ticker, "status": "FAILED", "reason": repr(e), "text_ko": "분석 실패"}
+        return (data["candidates"][0]["content"]["parts"][0]["text"] or "").strip()
+    except Exception:
+        return json.dumps(data, ensure_ascii=False)
+
+
+def build_intel(survivors: list[dict], cfg: dict) -> tuple[list[dict], str]:
+    api_key = (os.environ.get("GEMINI_API_KEY") or "").strip()
+    model = cfg.get("engine", {}).get("model", "gemini-2.5-flash")
+    template = cfg.get("engine", {}).get("prompt_ko_template", "티커: {{ticker}}\n한국어로 요약해줘.")
+
+    if not api_key:
+        out = [{"ticker": s["ticker"], "status": "SKIPPED", "reason": "NO_API_KEY", "text_ko": ""} for s in survivors]
+        return out, "SKIPPED"
+
+    out = []
+    ok = 0
+    for s in survivors:
+        t = s["ticker"]
+        prompt = render_prompt(template, t)
+        try:
+            text = gemini_generate(api_key, model, prompt)
+            out.append({"ticker": t, "status": "SUCCESS", "reason": None, "text_ko": text})
+            ok += 1
+        except Exception as e:
+            out.append({"ticker": t, "status": "FAILED", "reason": str(e), "text_ko": ""})
+
+    return out, ("SUCCESS" if ok > 0 else "FAILED")
 
 
 def build_intel_table_html(rows: list[dict], top_n: int = 10) -> str:
@@ -659,7 +685,6 @@ def main() -> None:
 
     engine_name = cfg["engine"]["name"]
     model = cfg["engine"]["model"]
-    prompt_template = cfg["engine"]["prompt_ko_template"]
 
     paths = cfg["paths"]
     logs_root = Path(paths["logs_root"])
@@ -682,18 +707,21 @@ def main() -> None:
     expand_scan_limit = int(run_cfg.get("expand_scan_limit", 500))
     intel_n = int(run_cfg.get("intel_n", 30))
 
+    # ✅ 핵심 변경: state/coverage를 stooq 캐시 폴더 안에 저장
+    stooq_cache_dir = Path("data/cache/stooq")
+    ensure_dir(stooq_cache_dir)
+    state_path = stooq_cache_dir / "state.json"
+    coverage_path = stooq_cache_dir / "coverage_universe.json"
+
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     run_id = f"{ts}_{uuid.uuid4().hex[:8]}"
     run_dir = logs_root / run_id
     ensure_dir(run_dir)
 
-    # state (persisted by actions cache)
-    state_path = Path("data/cache/state.json")
     state = read_json(state_path, default={"universe_offset": 0, "coverage_offset": 0}) or {}
     universe_offset = int(state.get("universe_offset", 0))
     coverage_offset = int(state.get("coverage_offset", 0))
 
-    coverage_path = Path("data/cache/coverage_universe.json")
     coverage = read_json(coverage_path, default={"tickers": []}) or {"tickers": []}
     coverage_tickers = sorted({t.strip().upper() for t in coverage.get("tickers", []) if isinstance(t, str) and t.strip()})
 
@@ -701,7 +729,7 @@ def main() -> None:
         "engine_name": engine_name,
         "run_id": run_id,
         "created_at_utc": now_utc_iso(),
-        "status": "STARTED",
+        "status": "SUCCESS",
         "engine": cfg["engine"]["provider"],
         "model": model,
         "config_path": cfg["_meta"]["config_path"],
@@ -714,6 +742,7 @@ def main() -> None:
         "universe_meta": {},
         "run_mode": mode,
         "coverage": {"before": len(coverage_tickers), "after": None},
+        "scan_source": None,
     }
 
     # A) Universe
@@ -739,21 +768,18 @@ def main() -> None:
         scan_list, universe_offset = slice_with_wrap(tickers_all, universe_offset, scan_n)
         run_json["scan_source"] = "expand_from_universe"
     else:
-        # daily
-        base = tickers_all
         use_cov = len(coverage_tickers) >= coverage_min
         if use_cov:
-            base = coverage_tickers
-            scan_list, coverage_offset = slice_with_wrap(base, coverage_offset, scan_limit)
+            scan_list, coverage_offset = slice_with_wrap(coverage_tickers, coverage_offset, scan_limit)
             run_json["scan_source"] = "daily_from_coverage"
         else:
-            scan_list, universe_offset = slice_with_wrap(base, universe_offset, scan_limit)
+            scan_list, universe_offset = slice_with_wrap(tickers_all, universe_offset, scan_limit)
             run_json["scan_source"] = "daily_from_universe"
 
     run_json["counts"]["universe_scanned"] = len(scan_list)
 
     # B) Scanner
-    candidates, scan_stats, real_tickers = build_candidates(scan_list, scanner_cfg)
+    candidates, scan_stats, real_tickers = build_candidates(scan_list, scanner_cfg, stooq_cache_dir)
     write_json(candidates_out, {
         "source": f"scanner_{scan_stats.get('provider','')}",
         "created_at_utc": now_utc_iso(),
@@ -765,7 +791,7 @@ def main() -> None:
     run_json["counts"]["candidates_raw"] = len(candidates)
     run_json["scanner_stats"] = scan_stats
 
-    # Update coverage (REAL only)
+    # Update coverage
     cov_set = set(coverage_tickers)
     for t in real_tickers:
         cov_set.add(t)
@@ -773,7 +799,7 @@ def main() -> None:
     write_json(coverage_path, {"created_at_utc": now_utc_iso(), "tickers": new_cov})
     run_json["coverage"]["after"] = len(new_cov)
 
-    # Save state cursor
+    # Save cursor state
     write_json(state_path, {
         "updated_at_utc": now_utc_iso(),
         "universe_offset": universe_offset,
@@ -793,29 +819,12 @@ def main() -> None:
     run_json["artifacts"]["survivors"] = str(survivors_out)
     run_json["counts"]["survivors"] = len(survivors)
 
-    # C) Intel
-    intel_rows = []
-    gemini_key = os.getenv("GEMINI_API_KEY", "")
-    if not gemini_key:
-        for r in survivors[:intel_n]:
-            intel_rows.append({"ticker": r["ticker"], "status": "SKIPPED", "reason": "GEMINI_API_KEY not set", "text_ko": "API 키 없음"})
-        run_json["status"] = "SUCCESS_WITHOUT_INTEL"
-    else:
-        try:
-            from google import genai
-            client = genai.Client()
-            for r in survivors[:intel_n]:
-                intel_rows.append(run_intel_for_ticker(client, model, prompt_template, r["ticker"]))
-            run_json["status"] = "SUCCESS"
-        except Exception as e:
-            run_json["status"] = "SUCCESS_WITH_INTEL_FAILED"
-            run_json["errors"].append(repr(e))
-            for r in survivors[:intel_n]:
-                intel_rows.append({"ticker": r["ticker"], "status": "FAILED", "reason": "client_init_failed", "text_ko": "클라이언트 초기화 실패"})
-
+    # C) Intel (gemini REST)
+    intel_rows, intel_status = build_intel(survivors[:intel_n], cfg)
     write_json(intel_out, intel_rows)
     run_json["artifacts"]["intel_30"] = str(intel_out)
-    run_json["counts"]["intel"] = len(intel_rows)
+    run_json["intel_status"] = intel_status
+    run_json["counts"]["intel"] = len([x for x in intel_rows if x.get("status") == "SUCCESS"])
 
     # D) Dashboard
     try:
@@ -845,14 +854,13 @@ def main() -> None:
     except Exception as e:
         run_json["errors"].append(f"dashboard_error:{repr(e)}")
 
-    # run.json
+    # run.json 저장
     write_json(run_dir / "run.json", run_json)
     print(
         "[OK] "
         f"run_id={run_id} mode={mode} status={run_json['status']} "
-        f"scan_source={run_json.get('scan_source')} scanned={run_json['counts'].get('universe_scanned')} "
-        f"scanner={run_json.get('scanner_stats',{})} "
-        f"coverage={run_json.get('coverage',{})}"
+        f"scan_source={run_json.get('scan_source')} "
+        f"coverage_before={run_json['coverage']['before']} coverage_after={run_json['coverage']['after']}"
     )
 
 
