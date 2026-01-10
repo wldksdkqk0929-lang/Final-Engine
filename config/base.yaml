@@ -7,6 +7,7 @@ engine:
 paths:
   logs_root: "data/logs/runs"
   universe_out: "data/processed/universe/universe.json"
+  candidates_out: "data/processed/candidates_raw/candidates_raw.json"
   intel_out: "data/processed/intel_30/intel_30.json"
   dashboard_out: "data/artifacts/dashboard/index.html"
   dashboard_template: "templates/dashboard.html"
