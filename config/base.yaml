@@ -26,17 +26,17 @@ universe:
   max_symbols: 6500
 
 run:
-  scan_limit: 800
+  scan_limit: 400
   intel_n: 30
 
 scanner:
   provider: "stooq"
   lookback_days: 365
   adv_window: 20
-  timeout_sec: 12
-  retries: 2
-  max_workers: 12
-  cache_ttl_hours: 48
+  timeout_sec: 20
+  retries: 5
+  max_workers: 4
+  cache_ttl_hours: 168
   fallback_to_fake: true
 
 funnel:
