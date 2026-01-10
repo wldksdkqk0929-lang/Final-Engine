@@ -16,14 +16,13 @@ jobs:
         with:
           python-version: "3.11"
 
-      # ✅ 이전 실행의 state(coverage/state)를 Artifact로부터 복원
-      # (없으면 그냥 넘어감)
+      # ✅ 이전 run의 state를 레포 루트에 복원 (경로 꼬임 방지)
       - name: Restore state from previous run (artifact)
         uses: dawidd6/action-download-artifact@v3
         with:
           workflow: final-engine.yml
           name: final-engine-state
-          path: data/cache
+          path: .
           if_no_artifact_found: ignore
 
       - name: Install dependencies
@@ -42,13 +41,16 @@ jobs:
         run: |
           python run.py
 
-      # ✅ 이번 실행이 만든 state를 다음 실행을 위해 Artifact로 저장
+      # ✅ state는 “파일만” 업로드 (폴더 중첩 원천 차단)
       - name: Upload state artifact (for next run)
         uses: actions/upload-artifact@v4
         with:
           name: final-engine-state
           path: |
-            data/cache
+            data/cache/state.json
+            data/cache/coverage_universe.json
+            data/cache/stooq/state.json
+            data/cache/stooq/coverage_universe.json
           if-no-files-found: warn
           retention-days: 30
 
