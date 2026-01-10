@@ -1,10 +1,13 @@
 import os
 import json
 import uuid
+import csv
+from io import StringIO
 from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
+import requests
 
 
 def now_utc_iso() -> str:
@@ -60,6 +63,13 @@ def load_config() -> dict:
         "run": {
             "intel_n": 30,
         },
+        "scanner": {
+            "provider": "stooq",
+            "lookback_days": 365,
+            "adv_window": 20,
+            "timeout_sec": 12,
+            "fallback_to_fake": True,
+        },
         "funnel": {
             "survivors_n": 30,
             "sort_key": "dd_52w_pct",
@@ -76,7 +86,7 @@ def load_config() -> dict:
     try:
         loaded = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
         cfg = default_cfg
-        for top_key in ("engine", "paths", "run", "funnel"):
+        for top_key in ("engine", "paths", "run", "scanner", "funnel"):
             if isinstance(loaded.get(top_key), dict):
                 cfg[top_key].update(loaded[top_key])
         cfg["_meta"]["config_loaded"] = True
@@ -123,21 +133,126 @@ def load_universe_seed() -> list[str]:
         return []
 
 
-def fake_scan_candidates(tickers: list[str]) -> list[dict]:
+def fake_metrics_for_ticker(ticker: str) -> dict:
+    score = sum(ord(c) for c in ticker) % 100
+    dd_52w = round(-1.0 * (20 + (score * 0.6)), 2)
+    adv_usd_m = round(0.5 + (score * 0.08), 2)
+    return {
+        "dd_52w_pct": dd_52w,
+        "adv_usd_m": adv_usd_m,
+        "scan_score": score,
+        "note": "FAKE_FALLBACK",
+        "price_source": "fake",
+    }
+
+
+def fetch_stooq_daily(ticker: str, timeout_sec: int) -> list[dict] | None:
+    symbol = f"{ticker.lower()}.us"
+    url = f"https://stooq.com/q/d/l/?s={symbol}&i=d"
+    try:
+        r = requests.get(url, timeout=timeout_sec)
+        if r.status_code != 200:
+            return None
+        text = r.text.strip()
+        if "Date,Open,High,Low,Close,Volume" not in text:
+            return None
+
+        f = StringIO(text)
+        reader = csv.DictReader(f)
+        rows = []
+        for row in reader:
+            try:
+                rows.append({
+                    "date": row["Date"],
+                    "open": float(row["Open"]),
+                    "high": float(row["High"]),
+                    "low": float(row["Low"]),
+                    "close": float(row["Close"]),
+                    "volume": float(row["Volume"]),
+                })
+            except Exception:
+                continue
+
+        if not rows:
+            return None
+        return rows
+    except Exception:
+        return None
+
+
+def compute_real_metrics_from_rows(rows: list[dict], lookback_days: int, adv_window: int) -> dict | None:
+    # stooq는 오래된 데이터부터 정렬되어 오는 경우가 많음 → 최신이 마지막
+    usable = [r for r in rows if r.get("volume", 0) > 0]
+    if len(usable) < max(adv_window, 60):
+        return None
+
+    # lookback_days는 캘린더 기준 근사. 데이터는 trading day라서 마지막 N개를 사용.
+    # 365일 근사로 260개 정도면 충분하지만 여유로 320개까지 사용
+    tail = usable[-min(len(usable), 320):]
+
+    latest = tail[-1]
+    last_close = latest["close"]
+
+    high_52w = max(r["high"] for r in tail)
+    if high_52w <= 0:
+        return None
+
+    dd_52w_pct = round((last_close / high_52w - 1.0) * 100.0, 2)
+
+    adv_slice = tail[-min(len(tail), adv_window):]
+    adv_usd = sum(r["close"] * r["volume"] for r in adv_slice) / len(adv_slice)
+    adv_usd_m = round(adv_usd / 1_000_000.0, 2)
+
+    # scan_score: 낙폭이 클수록 높게(간단)
+    scan_score = int(min(999, max(0, round(-dd_52w_pct * 10))))
+
+    return {
+        "dd_52w_pct": dd_52w_pct,
+        "adv_usd_m": adv_usd_m,
+        "scan_score": scan_score,
+        "note": "REAL_STOOQ",
+        "price_source": "stooq",
+    }
+
+
+def build_candidates(tickers: list[str], scanner_cfg: dict) -> tuple[list[dict], dict]:
+    provider = str(scanner_cfg.get("provider", "stooq")).lower()
+    timeout_sec = int(scanner_cfg.get("timeout_sec", 12))
+    lookback_days = int(scanner_cfg.get("lookback_days", 365))
+    adv_window = int(scanner_cfg.get("adv_window", 20))
+    fallback = bool(scanner_cfg.get("fallback_to_fake", True))
+
     rows = []
+    stats = {"real": 0, "fallback": 0, "provider": provider}
+
     for t in tickers:
-        score = sum(ord(c) for c in t) % 100
-        dd_52w = round(-1.0 * (20 + (score * 0.6)), 2)
-        adv_usd_m = round(0.5 + (score * 0.08), 2)
-        rows.append({
-            "ticker": t,
-            "dd_52w_pct": dd_52w,
-            "adv_usd_m": adv_usd_m,
-            "scan_score": score,
-            "note": "FAKE_SCAN",
-        })
-    rows.sort(key=lambda r: (r["dd_52w_pct"], -r["adv_usd_m"]))
-    return rows
+        if provider == "fake":
+            m = fake_metrics_for_ticker(t)
+            stats["fallback"] += 1
+            rows.append({"ticker": t, **m})
+            continue
+
+        real_rows = fetch_stooq_daily(t, timeout_sec=timeout_sec)
+        m = None
+        if real_rows is not None:
+            m = compute_real_metrics_from_rows(real_rows, lookback_days=lookback_days, adv_window=adv_window)
+
+        if m is None:
+            if fallback:
+                m = fake_metrics_for_ticker(t)
+                stats["fallback"] += 1
+            else:
+                # 폴백 금지면 최소값으로 넣어서 파이프라인 유지
+                m = {"dd_52w_pct": 0.0, "adv_usd_m": 0.0, "scan_score": 0, "note": "NO_DATA", "price_source": "none"}
+                stats["fallback"] += 1
+        else:
+            stats["real"] += 1
+
+        rows.append({"ticker": t, **m})
+
+    # 정렬: 낙폭 큰 순(더 음수) → 거래대금 큰 순
+    rows.sort(key=lambda r: (r.get("dd_52w_pct", 0.0), -r.get("adv_usd_m", 0.0)))
+    return rows, stats
 
 
 def build_scan_table_html(top_rows: list[dict]) -> str:
@@ -154,9 +269,9 @@ def build_scan_table_html(top_rows: list[dict]) -> str:
             "<tr>"
             f"<td>{i}</td>"
             f"<td><b>{safe_html_escape(r['ticker'])}</b></td>"
-            f"<td>{r['dd_52w_pct']}</td>"
-            f"<td>{r['adv_usd_m']}</td>"
-            f"<td>{r['scan_score']}</td>"
+            f"<td>{r.get('dd_52w_pct','')}</td>"
+            f"<td>{r.get('adv_usd_m','')}</td>"
+            f"<td>{r.get('scan_score','')}</td>"
             f"<td>{safe_html_escape(r.get('note',''))}</td>"
             "</tr>"
         )
@@ -176,7 +291,7 @@ def build_survivors_table_html(rows: list[dict]) -> str:
         return "<div class='muted'>서바이버 없음</div>"
     head = (
         "<table><thead><tr>"
-        "<th>#</th><th>Ticker</th><th>DD(52w)%</th><th>ADV($M)</th><th>Score</th>"
+        "<th>#</th><th>Ticker</th><th>DD(52w)%</th><th>ADV($M)</th><th>Score</th><th>Source</th>"
         "</tr></thead><tbody>"
     )
     body = ""
@@ -185,9 +300,10 @@ def build_survivors_table_html(rows: list[dict]) -> str:
             "<tr>"
             f"<td>{i}</td>"
             f"<td><b>{safe_html_escape(r['ticker'])}</b></td>"
-            f"<td>{r['dd_52w_pct']}</td>"
-            f"<td>{r['adv_usd_m']}</td>"
-            f"<td>{r['scan_score']}</td>"
+            f"<td>{r.get('dd_52w_pct','')}</td>"
+            f"<td>{r.get('adv_usd_m','')}</td>"
+            f"<td>{r.get('scan_score','')}</td>"
+            f"<td>{safe_html_escape(r.get('price_source',''))}</td>"
             "</tr>"
         )
     return head + body + "</tbody></table>"
@@ -250,6 +366,7 @@ def main() -> None:
     dashboard_template = Path(cfg["paths"]["dashboard_template"])
 
     intel_n = int(cfg["run"]["intel_n"])
+    scanner_cfg = cfg.get("scanner", {})
     survivors_n = int(cfg["funnel"]["survivors_n"])
     sort_key = str(cfg["funnel"]["sort_key"])
 
@@ -270,6 +387,7 @@ def main() -> None:
         "artifacts": {},
         "errors": [],
         "counts": {},
+        "scanner_stats": {},
     }
 
     # A) Universe
@@ -278,11 +396,12 @@ def main() -> None:
     run_json["artifacts"]["universe"] = str(universe_out)
     run_json["counts"]["universe"] = len(tickers)
 
-    # B) Candidates
-    candidates = fake_scan_candidates(tickers)
-    write_json(candidates_out, {"source": "fake_scan", "created_at_utc": now_utc_iso(), "count": len(candidates), "rows": candidates})
+    # B) Candidates (REAL with fallback)
+    candidates, scan_stats = build_candidates(tickers, scanner_cfg)
+    write_json(candidates_out, {"source": f"scanner_{scan_stats.get('provider','')}", "created_at_utc": now_utc_iso(), "count": len(candidates), "rows": candidates})
     run_json["artifacts"]["candidates_raw"] = str(candidates_out)
     run_json["counts"]["candidates_raw"] = len(candidates)
+    run_json["scanner_stats"] = scan_stats
 
     # E) Survivors
     survivors = funnel_survivors(candidates, survivors_n, sort_key)
@@ -300,7 +419,6 @@ def main() -> None:
     intel_rows = []
     gemini_key = os.getenv("GEMINI_API_KEY", "")
     if not gemini_key:
-        # 키 없으면 전부 SKIPPED
         for r in survivors[:intel_n]:
             intel_rows.append({"ticker": r["ticker"], "status": "SKIPPED", "reason": "GEMINI_API_KEY not set", "text_ko": "API 키 없음"})
         run_json["status"] = "SUCCESS_WITHOUT_INTEL"
@@ -352,7 +470,7 @@ def main() -> None:
         run_json["errors"].append(f"dashboard_error:{repr(e)}")
 
     write_json(run_dir / "run.json", run_json)
-    print(f"[OK] run_id={run_id} status={run_json['status']}")
+    print(f"[OK] run_id={run_id} status={run_json['status']} scanner={run_json.get('scanner_stats',{})}")
 
 
 if __name__ == "__main__":
