@@ -43,6 +43,7 @@ def load_config() -> dict:
         "paths": {
             "logs_root": "data/logs/runs",
             "universe_out": "data/processed/universe/universe.json",
+            "candidates_out": "data/processed/candidates_raw/candidates_raw.json",
             "intel_out": "data/processed/intel_30/intel_30.json",
             "dashboard_out": "data/artifacts/dashboard/index.html",
             "dashboard_template": "templates/dashboard.html",
@@ -95,146 +96,41 @@ def load_universe_seed() -> list[str]:
     try:
         obj = json.loads(seed_path.read_text(encoding="utf-8"))
         tickers = obj.get("tickers", [])
-        # 중복 제거 + 정렬
         tickers = sorted({t.strip().upper() for t in tickers if isinstance(t, str) and t.strip()})
         return tickers
     except Exception:
         return []
 
 
-def main() -> None:
-    cfg = load_config()
+def fake_scan_candidates(tickers: list[str]) -> list[dict]:
+    """
+    외부 가격 데이터 연결 전 단계.
+    스키마/정렬/대시보드 표시를 고정하기 위해
+    티커 문자열을 기반으로 결정론적(재현 가능한) 점수를 만든다.
+    """
+    rows = []
+    for t in tickers:
+        # 결정론적 점수: 문자 코드 합으로 0~99 생성
+        score = sum(ord(c) for c in t) % 100
+        dd_52w = round(-1.0 * (20 + (score * 0.6)), 2)  # -20% ~ -79.4% 범위
+        adv_usd_m = round(0.5 + (score * 0.08), 2)      # 0.5 ~ 8.42 (백만달러 가정)
+        rows.append({
+            "ticker": t,
+            "dd_52w_pct": dd_52w,
+            "adv_usd_m": adv_usd_m,
+            "scan_score": score,
+            "note": "FAKE_SCAN",
+        })
 
-    engine_name = cfg["engine"]["name"]
-    model = cfg["engine"]["model"]
-    prompt_ko = cfg["engine"]["prompt_ko"]
-
-    logs_root = Path(cfg["paths"]["logs_root"])
-    universe_out = Path(cfg["paths"]["universe_out"])
-    intel_out = Path(cfg["paths"]["intel_out"])
-    dashboard_out = Path(cfg["paths"]["dashboard_out"])
-    dashboard_template = Path(cfg["paths"]["dashboard_template"])
-
-    test_ticker = cfg["run"]["test_ticker"]
-
-    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    run_id = f"{ts}_{uuid.uuid4().hex[:8]}"
-    run_dir = logs_root / run_id
-    ensure_dir(run_dir)
-
-    run_json = {
-        "engine_name": engine_name,
-        "run_id": run_id,
-        "created_at_utc": now_utc_iso(),
-        "status": "STARTED",
-        "engine": cfg["engine"]["provider"],
-        "model": model,
-        "config_path": cfg["_meta"]["config_path"],
-        "config_loaded": cfg["_meta"]["config_loaded"],
-        "artifacts": {},
-        "errors": [],
-        "counts": {},
-    }
-
-    # A) Universe (seed 기반)
-    tickers = load_universe_seed()
-    universe_obj = {
-        "source": "seed",
-        "created_at_utc": now_utc_iso(),
-        "count": len(tickers),
-        "tickers": tickers,
-    }
-    write_json(universe_out, universe_obj)
-    run_json["artifacts"]["universe"] = str(universe_out)
-    run_json["counts"]["universe"] = len(tickers)
-
-    # C) Intel (기존과 동일)
-    intel_status = "SKIPPED"
-    intel_text_ko = "초기 상태: 인텔 없음"
-
-    gemini_key = os.getenv("GEMINI_API_KEY", "")
-
-    if not gemini_key:
-        intel = [{
-            "ticker": test_ticker,
-            "status": "SKIPPED",
-            "reason": "GEMINI_API_KEY not set",
-            "text_ko": "Gemini API 키가 설정되지 않아 인텔 모듈을 건너뜀."
-        }]
-        write_json(intel_out, intel)
-        intel_status = "SKIPPED"
-        intel_text_ko = intel[0]["text_ko"]
-
-        run_json["status"] = "SUCCESS_WITHOUT_INTEL"
-        run_json["artifacts"]["intel_30"] = str(intel_out)
-
-    else:
-        try:
-            from google import genai
-            client = genai.Client()
-
-            resp = client.models.generate_content(
-                model=model,
-                contents=prompt_ko,
-            )
-
-            text = (resp.text or "").strip()
-            if not text:
-                raise RuntimeError("Empty response text")
-
-            intel = [{
-                "ticker": test_ticker,
-                "status": "SUCCESS",
-                "reason": None,
-                "text_ko": text,
-            }]
-            write_json(intel_out, intel)
-
-            intel_status = "SUCCESS"
-            intel_text_ko = text
-
-            run_json["status"] = "SUCCESS"
-            run_json["artifacts"]["intel_30"] = str(intel_out)
-
-        except Exception as e:
-            intel = [{
-                "ticker": test_ticker,
-                "status": "FAILED",
-                "reason": repr(e),
-                "text_ko": "Gemini 호출 실패. 기술 모드로 대체 필요."
-            }]
-            write_json(intel_out, intel)
-
-            intel_status = "FAILED"
-            intel_text_ko = intel[0]["text_ko"]
-
-            run_json["status"] = "SUCCESS_WITH_INTEL_FAILED"
-            run_json["artifacts"]["intel_30"] = str(intel_out)
-            run_json["errors"].append(repr(e))
-
-    # D) Dashboard는 무조건 생성
-    try:
-        if not dashboard_template.exists():
-            raise FileNotFoundError(f"Missing template: {dashboard_template}")
-
-        ctx = {
-            "engine_name": run_json["engine_name"],
-            "run_id": run_json["run_id"],
-            "created_at_utc": run_json["created_at_utc"],
-            "status": run_json["status"],
-            "model": run_json["model"],
-            "intel_status": intel_status,
-            "intel_text_ko": intel_text_ko,
-        }
-        build_dashboard_html(dashboard_template, dashboard_out, ctx)
-        run_json["artifacts"]["dashboard"] = str(dashboard_out)
-
-    except Exception as e:
-        run_json["errors"].append(f"dashboard_error:{repr(e)}")
-
-    write_json(run_dir / "run.json", run_json)
-    print(f"[OK] run_id={run_id} status={run_json['status']}")
+    # 정렬: 낙폭 큰 순(더 음수), 그 다음 거래대금 큰 순
+    rows.sort(key=lambda r: (r["dd_52w_pct"], -r["adv_usd_m"]))
+    return rows
 
 
-if __name__ == "__main__":
-    main()
+def build_scan_table_html(top_rows: list[dict]) -> str:
+    if not top_rows:
+        return "<div class='muted'>스캔 결과 없음</div>"
+
+    head = (
+        "<table>"
+        "<thead><tr>
