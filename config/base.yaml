@@ -33,9 +33,9 @@ scanner:
   provider: "stooq"
   lookback_days: 365
   adv_window: 20
-  timeout_sec: 20
-  retries: 5
-  max_workers: 4
+  timeout_sec: 35
+  retries: 8
+  max_workers: 2
   cache_ttl_hours: 168
   fallback_to_fake: true
 
