@@ -2,9 +2,12 @@ import os
 import json
 import uuid
 import csv
+import time
+import random
 from io import StringIO
 from datetime import datetime, timezone
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import yaml
 import requests
@@ -78,6 +81,9 @@ def load_config() -> dict:
             "lookback_days": 365,
             "adv_window": 20,
             "timeout_sec": 12,
+            "retries": 2,
+            "max_workers": 12,
+            "cache_ttl_hours": 48,
             "fallback_to_fake": True,
         },
         "funnel": {
@@ -153,9 +159,7 @@ def _download_text(url: str, timeout_sec: int) -> str:
 
 
 def _is_equity_like(symbol: str, name: str) -> bool:
-    # 너무 특수한 종목(우선주/워런트/권리/유닛/노트 등) 제외: 데이터 실패율 급감 목적
     n = (name or "").lower()
-
     bad_keywords = [
         "warrant", "warrants",
         "rights",
@@ -169,23 +173,13 @@ def _is_equity_like(symbol: str, name: str) -> bool:
     ]
     if any(k in n for k in bad_keywords):
         return False
-
-    # 심볼에 '^' 같은 비정상 문자가 있으면 제외
     for ch in ["^", " ", "/"]:
         if ch in symbol:
             return False
-
     return True
 
 
 def fetch_universe_nasdaqtrader(exclude_etf: bool, max_symbols: int, timeout_sec: int = 20) -> dict:
-    """
-    nasdaqtrader 심볼 디렉토리로 NASDAQ/NYSE/AMEX 포함 유니버스 구성
-    - nasdaqtraded.txt + otherlisted.txt 합침
-    - Test Issue 제외
-    - ETF 제외 옵션
-    - 특수증권 일부 제외(우선주/워런트 등)
-    """
     meta = {
         "provider": "nasdaqtrader",
         "exclude_etf": exclude_etf,
@@ -197,7 +191,6 @@ def fetch_universe_nasdaqtrader(exclude_etf: bool, max_symbols: int, timeout_sec
 
     tickers = set()
 
-    # 1) nasdaqtraded.txt
     txt1 = _download_text(NASDQ_NASDAQTRADED_URL, timeout_sec=timeout_sec)
     lines1 = [ln for ln in txt1.splitlines() if ln and "|" in ln]
     if not lines1:
@@ -232,7 +225,6 @@ def fetch_universe_nasdaqtrader(exclude_etf: bool, max_symbols: int, timeout_sec
 
         tickers.add(sym)
 
-    # 2) otherlisted.txt
     txt2 = _download_text(NASDQ_OTHERLISTED_URL, timeout_sec=timeout_sec)
     lines2 = [ln for ln in txt2.splitlines() if ln and "|" in ln]
     if not lines2:
@@ -289,18 +281,42 @@ def fake_metrics_for_ticker(ticker: str) -> dict:
     }
 
 
-def fetch_stooq_daily(ticker: str, timeout_sec: int) -> list[dict] | None:
+def _is_cache_fresh(path: Path, ttl_hours: int) -> bool:
+    if not path.exists():
+        return False
+    age_sec = time.time() - path.stat().st_mtime
+    return age_sec <= ttl_hours * 3600
+
+
+def _http_get_text_with_retries(url: str, timeout_sec: int, retries: int) -> str | None:
+    for attempt in range(retries + 1):
+        try:
+            r = requests.get(url, timeout=timeout_sec)
+            if r.status_code != 200:
+                raise RuntimeError(f"HTTP {r.status_code}")
+            return r.text
+        except Exception:
+            if attempt >= retries:
+                return None
+            time.sleep(0.3 + random.random() * 0.7)
+    return None
+
+
+def fetch_stooq_csv_text(ticker: str, timeout_sec: int, retries: int) -> str | None:
     symbol = f"{ticker.lower()}.us"
     url = f"https://stooq.com/q/d/l/?s={symbol}&i=d"
-    try:
-        r = requests.get(url, timeout=timeout_sec)
-        if r.status_code != 200:
-            return None
-        text = r.text.strip()
-        if "Date,Open,High,Low,Close,Volume" not in text:
-            return None
+    text = _http_get_text_with_retries(url, timeout_sec=timeout_sec, retries=retries)
+    if not text:
+        return None
+    text = text.strip()
+    if "Date,Open,High,Low,Close,Volume" not in text:
+        return None
+    return text
 
-        f = StringIO(text)
+
+def parse_stooq_rows(csv_text: str) -> list[dict] | None:
+    try:
+        f = StringIO(csv_text)
         reader = csv.DictReader(f)
         rows = []
         for row in reader:
@@ -313,10 +329,7 @@ def fetch_stooq_daily(ticker: str, timeout_sec: int) -> list[dict] | None:
                 })
             except Exception:
                 continue
-
-        if not rows:
-            return None
-        return rows
+        return rows if rows else None
     except Exception:
         return None
 
@@ -341,7 +354,6 @@ def compute_real_metrics_from_rows(rows: list[dict], adv_window: int) -> dict | 
     adv_usd_m = round(adv_usd / 1_000_000.0, 2)
 
     scan_score = int(min(999, max(0, round(-dd_52w_pct * 10))))
-
     return {
         "dd_52w_pct": dd_52w_pct,
         "adv_usd_m": adv_usd_m,
@@ -352,38 +364,117 @@ def compute_real_metrics_from_rows(rows: list[dict], adv_window: int) -> dict | 
     }
 
 
-def build_candidates(tickers: list[str], scanner_cfg: dict) -> tuple[list[dict], dict]:
+def get_stooq_metrics_with_cache(
+    ticker: str,
+    adv_window: int,
+    timeout_sec: int,
+    retries: int,
+    cache_ttl_hours: int,
+) -> tuple[dict | None, bool]:
+    cache_dir = Path("data/cache/stooq")
+    ensure_dir(cache_dir)
+    cache_path = cache_dir / f"{ticker.upper()}.csv"
+
+    cached = False
+    csv_text = None
+
+    if _is_cache_fresh(cache_path, cache_ttl_hours):
+        try:
+            csv_text = cache_path.read_text(encoding="utf-8")
+            cached = True
+        except Exception:
+            csv_text = None
+            cached = False
+
+    if not csv_text:
+        csv_text = fetch_stooq_csv_text(ticker, timeout_sec=timeout_sec, retries=retries)
+        if csv_text:
+            try:
+                cache_path.write_text(csv_text, encoding="utf-8")
+            except Exception:
+                pass
+
+    if not csv_text:
+        return None, cached
+
+    rows = parse_stooq_rows(csv_text)
+    if not rows:
+        return None, cached
+
+    m = compute_real_metrics_from_rows(rows, adv_window=adv_window)
+    return m, cached
+
+
+def _metrics_for_one_ticker(ticker: str, scanner_cfg: dict) -> tuple[str, dict, dict]:
     provider = str(scanner_cfg.get("provider", "stooq")).lower()
     timeout_sec = int(scanner_cfg.get("timeout_sec", 12))
     adv_window = int(scanner_cfg.get("adv_window", 20))
+    retries = int(scanner_cfg.get("retries", 2))
+    cache_ttl_hours = int(scanner_cfg.get("cache_ttl_hours", 48))
     fallback = bool(scanner_cfg.get("fallback_to_fake", True))
 
-    rows = []
-    stats = {"real": 0, "fallback": 0, "provider": provider}
+    local_stats = {"real": 0, "fallback": 0, "nodata": 0, "cache_hit": 0}
 
-    for t in tickers:
-        if provider == "fake":
-            m = fake_metrics_for_ticker(t)
-            stats["fallback"] += 1
-            rows.append({"ticker": t, **m})
-            continue
+    if provider == "fake":
+        m = fake_metrics_for_ticker(ticker)
+        local_stats["fallback"] += 1
+        return ticker, m, local_stats
 
-        real_rows = fetch_stooq_daily(t, timeout_sec=timeout_sec)
-        m = None
-        if real_rows is not None:
-            m = compute_real_metrics_from_rows(real_rows, adv_window=adv_window)
+    m, cached = get_stooq_metrics_with_cache(
+        ticker=ticker,
+        adv_window=adv_window,
+        timeout_sec=timeout_sec,
+        retries=retries,
+        cache_ttl_hours=cache_ttl_hours,
+    )
+    if cached:
+        local_stats["cache_hit"] += 1
 
-        if m is None:
-            if fallback:
-                m = fake_metrics_for_ticker(t)
-                stats["fallback"] += 1
-            else:
-                m = {"dd_52w_pct": 0.0, "adv_usd_m": 0.0, "scan_score": 0, "note": "NO_DATA", "price_source": "none", "last_close": None}
-                stats["fallback"] += 1
+    if m is None:
+        local_stats["nodata"] += 1
+        if fallback:
+            m = fake_metrics_for_ticker(ticker)
+            local_stats["fallback"] += 1
         else:
-            stats["real"] += 1
+            m = {"dd_52w_pct": 0.0, "adv_usd_m": 0.0, "scan_score": 0, "note": "NO_DATA", "price_source": "none", "last_close": None}
+            local_stats["fallback"] += 1
+    else:
+        local_stats["real"] += 1
 
-        rows.append({"ticker": t, **m})
+    return ticker, m, local_stats
+
+
+def build_candidates(tickers: list[str], scanner_cfg: dict) -> tuple[list[dict], dict]:
+    provider = str(scanner_cfg.get("provider", "stooq")).lower()
+    max_workers = int(scanner_cfg.get("max_workers", 12))
+
+    rows = []
+    stats = {"real": 0, "fallback": 0, "nodata": 0, "cache_hit": 0, "provider": provider}
+
+    if provider == "fake" or max_workers <= 1:
+        for t in tickers:
+            _, m, st = _metrics_for_one_ticker(t, scanner_cfg)
+            stats["real"] += st["real"]
+            stats["fallback"] += st["fallback"]
+            stats["nodata"] += st["nodata"]
+            stats["cache_hit"] += st["cache_hit"]
+            rows.append({"ticker": t, **m})
+    else:
+        with ThreadPoolExecutor(max_workers=max_workers) as ex:
+            futs = {ex.submit(_metrics_for_one_ticker, t, scanner_cfg): t for t in tickers}
+            for fut in as_completed(futs):
+                t = futs[fut]
+                try:
+                    _, m, st = fut.result()
+                except Exception:
+                    m = fake_metrics_for_ticker(t)
+                    st = {"real": 0, "fallback": 1, "nodata": 1, "cache_hit": 0}
+
+                stats["real"] += st["real"]
+                stats["fallback"] += st["fallback"]
+                stats["nodata"] += st["nodata"]
+                stats["cache_hit"] += st["cache_hit"]
+                rows.append({"ticker": t, **m})
 
     rows.sort(key=lambda r: (r.get("dd_52w_pct", 0.0), -r.get("adv_usd_m", 0.0)))
     return rows, stats
@@ -457,9 +548,19 @@ def pick_survivors(candidates: list[dict], funnel_cfg: dict) -> tuple[list[dict]
     target_n = int(funnel_cfg.get("survivors_n", 30))
 
     filtered, filter_stats = apply_funnel_filters(candidates, funnel_cfg)
-
     survivors = filtered[:target_n]
 
+    # 부족하면 "데이터 있는 종목" 우선으로 보충
+    if len(survivors) < target_n:
+        already = {r["ticker"] for r in survivors}
+        with_data = [r for r in candidates if r.get("last_close") is not None and r["ticker"] not in already]
+        for r in with_data:
+            survivors.append(r)
+            already.add(r["ticker"])
+            if len(survivors) >= target_n:
+                break
+
+    # 그래도 부족하면 마지막으로 nodata까지 허용(무조건 송출)
     if len(survivors) < target_n:
         already = {r["ticker"] for r in survivors}
         for r in candidates:
@@ -584,7 +685,7 @@ def main() -> None:
         "universe_meta": {},
     }
 
-    # A) Universe (auto)
+    # A) Universe
     provider = str(universe_cfg.get("provider", "nasdaqtrader")).lower()
     exclude_etf = bool(universe_cfg.get("exclude_etf", True))
     max_symbols = int(universe_cfg.get("max_symbols", 6500))
@@ -597,7 +698,6 @@ def main() -> None:
         tickers_all = uni["tickers"]
         run_json["universe_meta"] = uni["meta"]
 
-    # 유니버스는 전체 저장
     write_json(universe_out, {
         "source": provider,
         "created_at_utc": now_utc_iso(),
@@ -608,7 +708,6 @@ def main() -> None:
     run_json["artifacts"]["universe"] = str(universe_out)
     run_json["counts"]["universe_total"] = len(tickers_all)
 
-    # 스캔은 scan_limit만(시간 폭발 방지)
     tickers_scan = tickers_all[: max(0, scan_limit)]
     run_json["counts"]["universe_scanned"] = len(tickers_scan)
 
@@ -618,6 +717,7 @@ def main() -> None:
         "source": f"scanner_{scan_stats.get('provider','')}",
         "created_at_utc": now_utc_iso(),
         "count": len(candidates),
+        "scanner_stats": scan_stats,
         "rows": candidates
     })
     run_json["artifacts"]["candidates_raw"] = str(candidates_out)
@@ -680,7 +780,6 @@ def main() -> None:
         survivors_table_html = build_survivors_table_html(survivors)
         intel_table_html = build_intel_table_html(intel_rows, top_n=10)
 
-        # 기존 템플릿 호환: universe_count는 "스캔 대상" 기준으로 표시
         ctx = {
             "engine_name": run_json["engine_name"],
             "run_id": run_json["run_id"],
