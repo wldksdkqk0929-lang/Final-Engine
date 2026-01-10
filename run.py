@@ -44,12 +44,17 @@ def load_config() -> dict:
             "logs_root": "data/logs/runs",
             "universe_out": "data/processed/universe/universe.json",
             "candidates_out": "data/processed/candidates_raw/candidates_raw.json",
+            "survivors_out": "data/processed/survivors/survivors.json",
             "intel_out": "data/processed/intel_30/intel_30.json",
             "dashboard_out": "data/artifacts/dashboard/index.html",
             "dashboard_template": "templates/dashboard.html",
         },
         "run": {
             "test_ticker": "TEST",
+        },
+        "funnel": {
+            "survivors_n": 30,
+            "sort_key": "dd_52w_pct",
         },
         "_meta": {
             "config_path": config_path,
@@ -63,7 +68,7 @@ def load_config() -> dict:
     try:
         loaded = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
         cfg = default_cfg
-        for top_key in ("engine", "paths", "run"):
+        for top_key in ("engine", "paths", "run", "funnel"):
             if isinstance(loaded.get(top_key), dict):
                 cfg[top_key].update(loaded[top_key])
         cfg["_meta"]["config_loaded"] = True
@@ -82,24 +87,16 @@ def safe_html_escape(s: str) -> str:
 
 
 def build_dashboard_html(template_path: Path, out_path: Path, context: dict) -> None:
-    """
-    기본은 escape해서 안전하게 넣고,
-    scan_table_html만 RAW(이스케이프 없이) 삽입한다.
-    """
     tpl = read_text(template_path)
     html = tpl
 
-    raw_keys = {"scan_table_html"}
+    raw_keys = {"scan_table_html", "survivors_table_html"}
 
     for key, val in context.items():
         token = f"{{{{{key}}}}}"
-        if val is None:
-            rendered = ""
-        else:
-            rendered = str(val)
-
+        rendered = "" if val is None else str(val)
         if key in raw_keys:
-            html = html.replace(token, rendered)  # RAW 삽입
+            html = html.replace(token, rendered)
         else:
             html = html.replace(token, safe_html_escape(rendered))
 
@@ -113,23 +110,17 @@ def load_universe_seed() -> list[str]:
     try:
         obj = json.loads(seed_path.read_text(encoding="utf-8"))
         tickers = obj.get("tickers", [])
-        tickers = sorted({t.strip().upper() for t in tickers if isinstance(t, str) and t.strip()})
-        return tickers
+        return sorted({t.strip().upper() for t in tickers if isinstance(t, str) and t.strip()})
     except Exception:
         return []
 
 
 def fake_scan_candidates(tickers: list[str]) -> list[dict]:
-    """
-    외부 가격 데이터 연결 전 단계.
-    스키마/정렬/대시보드 표시를 고정하기 위해
-    티커 문자열을 기반으로 결정론적(재현 가능한) 점수를 만든다.
-    """
     rows = []
     for t in tickers:
         score = sum(ord(c) for c in t) % 100
-        dd_52w = round(-1.0 * (20 + (score * 0.6)), 2)  # -20% ~ -79.4%
-        adv_usd_m = round(0.5 + (score * 0.08), 2)      # 0.5 ~ 8.42 ($M 가정)
+        dd_52w = round(-1.0 * (20 + (score * 0.6)), 2)
+        adv_usd_m = round(0.5 + (score * 0.08), 2)
         rows.append({
             "ticker": t,
             "dd_52w_pct": dd_52w,
@@ -137,7 +128,6 @@ def fake_scan_candidates(tickers: list[str]) -> list[dict]:
             "scan_score": score,
             "note": "FAKE_SCAN",
         })
-
     rows.sort(key=lambda r: (r["dd_52w_pct"], -r["adv_usd_m"]))
     return rows
 
@@ -145,10 +135,8 @@ def fake_scan_candidates(tickers: list[str]) -> list[dict]:
 def build_scan_table_html(top_rows: list[dict]) -> str:
     if not top_rows:
         return "<div class='muted'>스캔 결과 없음</div>"
-
     head = (
-        "<table>"
-        "<thead><tr>"
+        "<table><thead><tr>"
         "<th>#</th><th>Ticker</th><th>DD(52w)%</th><th>ADV($M)</th><th>Score</th><th>Note</th>"
         "</tr></thead><tbody>"
     )
@@ -164,8 +152,38 @@ def build_scan_table_html(top_rows: list[dict]) -> str:
             f"<td>{safe_html_escape(r.get('note',''))}</td>"
             "</tr>"
         )
-    tail = "</tbody></table>"
-    return head + body + tail
+    return head + body + "</tbody></table>"
+
+
+def funnel_survivors(candidates: list[dict], n: int, sort_key: str) -> list[dict]:
+    # sort_key: dd_52w_pct (더 낮을수록 낙폭 큼)
+    if sort_key == "dd_52w_pct":
+        sorted_rows = sorted(candidates, key=lambda r: (r.get("dd_52w_pct", 0.0), -r.get("adv_usd_m", 0.0)))
+    else:
+        sorted_rows = candidates[:]
+    return sorted_rows[: max(0, int(n))]
+
+
+def build_survivors_table_html(rows: list[dict]) -> str:
+    if not rows:
+        return "<div class='muted'>서바이버 없음</div>"
+    head = (
+        "<table><thead><tr>"
+        "<th>#</th><th>Ticker</th><th>DD(52w)%</th><th>ADV($M)</th><th>Score</th>"
+        "</tr></thead><tbody>"
+    )
+    body = ""
+    for i, r in enumerate(rows, start=1):
+        body += (
+            "<tr>"
+            f"<td>{i}</td>"
+            f"<td><b>{safe_html_escape(r['ticker'])}</b></td>"
+            f"<td>{r['dd_52w_pct']}</td>"
+            f"<td>{r['adv_usd_m']}</td>"
+            f"<td>{r['scan_score']}</td>"
+            "</tr>"
+        )
+    return head + body + "</tbody></table>"
 
 
 def main() -> None:
@@ -178,11 +196,14 @@ def main() -> None:
     logs_root = Path(cfg["paths"]["logs_root"])
     universe_out = Path(cfg["paths"]["universe_out"])
     candidates_out = Path(cfg["paths"]["candidates_out"])
+    survivors_out = Path(cfg["paths"]["survivors_out"])
     intel_out = Path(cfg["paths"]["intel_out"])
     dashboard_out = Path(cfg["paths"]["dashboard_out"])
     dashboard_template = Path(cfg["paths"]["dashboard_template"])
 
     test_ticker = cfg["run"]["test_ticker"]
+    survivors_n = int(cfg["funnel"]["survivors_n"])
+    sort_key = str(cfg["funnel"]["sort_key"])
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     run_id = f"{ts}_{uuid.uuid4().hex[:8]}"
@@ -205,98 +226,70 @@ def main() -> None:
 
     # A) Universe
     tickers = load_universe_seed()
-    universe_obj = {
-        "source": "seed",
-        "created_at_utc": now_utc_iso(),
-        "count": len(tickers),
-        "tickers": tickers,
-    }
-    write_json(universe_out, universe_obj)
+    write_json(universe_out, {"source": "seed", "created_at_utc": now_utc_iso(), "count": len(tickers), "tickers": tickers})
     run_json["artifacts"]["universe"] = str(universe_out)
     run_json["counts"]["universe"] = len(tickers)
 
-    # B) Scanner (FAKE)
+    # B) Candidates
     candidates = fake_scan_candidates(tickers)
-    candidates_obj = {
-        "source": "fake_scan",
-        "created_at_utc": now_utc_iso(),
-        "count": len(candidates),
-        "rows": candidates,
-    }
-    write_json(candidates_out, candidates_obj)
+    write_json(candidates_out, {"source": "fake_scan", "created_at_utc": now_utc_iso(), "count": len(candidates), "rows": candidates})
     run_json["artifacts"]["candidates_raw"] = str(candidates_out)
     run_json["counts"]["candidates_raw"] = len(candidates)
+
+    # E) Survivors
+    survivors = funnel_survivors(candidates, survivors_n, sort_key)
+    write_json(survivors_out, {
+        "source": "funnel_v1",
+        "created_at_utc": now_utc_iso(),
+        "count": len(survivors),
+        "rules": {"survivors_n": survivors_n, "sort_key": sort_key},
+        "rows": survivors
+    })
+    run_json["artifacts"]["survivors"] = str(survivors_out)
+    run_json["counts"]["survivors"] = len(survivors)
 
     # C) Intel
     intel_status = "SKIPPED"
     intel_text_ko = "초기 상태: 인텔 없음"
-
     gemini_key = os.getenv("GEMINI_API_KEY", "")
 
     if not gemini_key:
-        intel = [{
-            "ticker": test_ticker,
-            "status": "SKIPPED",
-            "reason": "GEMINI_API_KEY not set",
-            "text_ko": "Gemini API 키가 설정되지 않아 인텔 모듈을 건너뜀."
-        }]
+        intel = [{"ticker": test_ticker, "status": "SKIPPED", "reason": "GEMINI_API_KEY not set", "text_ko": "Gemini API 키가 설정되지 않아 인텔 모듈을 건너뜀."}]
         write_json(intel_out, intel)
         intel_status = "SKIPPED"
         intel_text_ko = intel[0]["text_ko"]
         run_json["status"] = "SUCCESS_WITHOUT_INTEL"
         run_json["artifacts"]["intel_30"] = str(intel_out)
-
     else:
         try:
             from google import genai
             client = genai.Client()
-
-            resp = client.models.generate_content(
-                model=model,
-                contents=prompt_ko,
-            )
-
+            resp = client.models.generate_content(model=model, contents=prompt_ko)
             text = (resp.text or "").strip()
             if not text:
                 raise RuntimeError("Empty response text")
-
-            intel = [{
-                "ticker": test_ticker,
-                "status": "SUCCESS",
-                "reason": None,
-                "text_ko": text,
-            }]
+            intel = [{"ticker": test_ticker, "status": "SUCCESS", "reason": None, "text_ko": text}]
             write_json(intel_out, intel)
-
             intel_status = "SUCCESS"
             intel_text_ko = text
-
             run_json["status"] = "SUCCESS"
             run_json["artifacts"]["intel_30"] = str(intel_out)
-
         except Exception as e:
-            intel = [{
-                "ticker": test_ticker,
-                "status": "FAILED",
-                "reason": repr(e),
-                "text_ko": "Gemini 호출 실패. 기술 모드로 대체 필요."
-            }]
+            intel = [{"ticker": test_ticker, "status": "FAILED", "reason": repr(e), "text_ko": "Gemini 호출 실패. 기술 모드로 대체 필요."}]
             write_json(intel_out, intel)
-
             intel_status = "FAILED"
             intel_text_ko = intel[0]["text_ko"]
-
             run_json["status"] = "SUCCESS_WITH_INTEL_FAILED"
             run_json["artifacts"]["intel_30"] = str(intel_out)
             run_json["errors"].append(repr(e))
 
-    # D) Dashboard (무조건)
+    # D) Dashboard
     try:
         if not dashboard_template.exists():
             raise FileNotFoundError(f"Missing template: {dashboard_template}")
 
-        top20 = candidates[:20]
-        scan_table_html = build_scan_table_html(top20)
+        scan_table_html = build_scan_table_html(candidates[:20])
+        survivors_table_html = build_survivors_table_html(survivors)
 
         ctx = {
             "engine_name": run_json["engine_name"],
@@ -308,11 +301,12 @@ def main() -> None:
             "intel_text_ko": intel_text_ko,
             "universe_count": run_json["counts"]["universe"],
             "candidates_count": run_json["counts"]["candidates_raw"],
-            "scan_table_html": scan_table_html,  # RAW 삽입 대상
+            "survivors_count": run_json["counts"]["survivors"],
+            "scan_table_html": scan_table_html,
+            "survivors_table_html": survivors_table_html,
         }
         build_dashboard_html(dashboard_template, dashboard_out, ctx)
         run_json["artifacts"]["dashboard"] = str(dashboard_out)
-
     except Exception as e:
         run_json["errors"].append(f"dashboard_error:{repr(e)}")
 
