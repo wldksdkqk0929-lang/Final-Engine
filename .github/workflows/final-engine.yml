@@ -16,15 +16,15 @@ jobs:
         with:
           python-version: "3.11"
 
-      # 1) Restore: 최신 캐시를 prefix로 복원
-      - name: Restore Final Engine cache
-        uses: actions/cache/restore@v4
+      # ✅ 이전 실행의 state(coverage/state)를 Artifact로부터 복원
+      # (없으면 그냥 넘어감)
+      - name: Restore state from previous run (artifact)
+        uses: dawidd6/action-download-artifact@v3
         with:
-          path: |
-            data/cache
-          key: final-engine-cache-${{ runner.os }}-${{ github.run_id }}
-          restore-keys: |
-            final-engine-cache-${{ runner.os }}-
+          workflow: final-engine.yml
+          name: final-engine-state
+          path: data/cache
+          if_no_artifact_found: ignore
 
       - name: Install dependencies
         run: |
@@ -42,13 +42,15 @@ jobs:
         run: |
           python run.py
 
-      # 2) Save: 매 실행마다 “새 키”로 저장(덮어쓰기 막힘 문제 제거)
-      - name: Save Final Engine cache
-        uses: actions/cache/save@v4
+      # ✅ 이번 실행이 만든 state를 다음 실행을 위해 Artifact로 저장
+      - name: Upload state artifact (for next run)
+        uses: actions/upload-artifact@v4
         with:
+          name: final-engine-state
           path: |
             data/cache
-          key: final-engine-cache-${{ runner.os }}-${{ github.run_id }}
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
