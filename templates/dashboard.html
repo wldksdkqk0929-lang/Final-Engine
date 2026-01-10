@@ -26,12 +26,16 @@
       <div>status: <span class="pill">{{status}}</span></div>
       <div>model: <b>{{model}}</b></div>
       <div>intel_status: <span class="pill">{{intel_status}}</span></div>
-      <div class="muted">universe_count: {{universe_count}} / candidates_count: {{candidates_count}}</div>
+      <div class="muted">universe: {{universe_count}} / candidates: {{candidates_count}} / survivors: {{survivors_count}}</div>
     </div>
 
     <h2 style="font-size:16px; margin-top:16px;">Scanner TOP 20</h2>
-    <div class="muted">지금은 외부 가격 데이터 연결 전이라, 유니버스 티커를 기반으로 “가짜 스캔 결과(스키마 고정용)”를 생성합니다.</div>
+    <div class="muted">현재는 외부 가격 데이터 연결 전이라, 결정론적(재현 가능한) 가짜 스캔 결과로 스키마를 고정합니다.</div>
     {{scan_table_html}}
+
+    <h2 style="font-size:16px; margin-top:16px;">Survivors TOP 30</h2>
+    <div class="muted">E(Funnel) 모듈 결과. 지금은 낙폭(DD 52w) 기준으로 상위 N개를 정예화합니다.</div>
+    {{survivors_table_html}}
 
     <h2 style="font-size:16px; margin-top:16px;">Intel 요약(한국어)</h2>
     <pre>{{intel_text_ko}}</pre>
