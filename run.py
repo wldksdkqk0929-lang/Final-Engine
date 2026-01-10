@@ -82,10 +82,27 @@ def safe_html_escape(s: str) -> str:
 
 
 def build_dashboard_html(template_path: Path, out_path: Path, context: dict) -> None:
+    """
+    기본은 escape해서 안전하게 넣고,
+    scan_table_html만 RAW(이스케이프 없이) 삽입한다.
+    """
     tpl = read_text(template_path)
     html = tpl
+
+    raw_keys = {"scan_table_html"}
+
     for key, val in context.items():
-        html = html.replace(f"{{{{{key}}}}}", safe_html_escape(str(val if val is not None else "")))
+        token = f"{{{{{key}}}}}"
+        if val is None:
+            rendered = ""
+        else:
+            rendered = str(val)
+
+        if key in raw_keys:
+            html = html.replace(token, rendered)  # RAW 삽입
+        else:
+            html = html.replace(token, safe_html_escape(rendered))
+
     write_text(out_path, html)
 
 
@@ -110,10 +127,9 @@ def fake_scan_candidates(tickers: list[str]) -> list[dict]:
     """
     rows = []
     for t in tickers:
-        # 결정론적 점수: 문자 코드 합으로 0~99 생성
         score = sum(ord(c) for c in t) % 100
-        dd_52w = round(-1.0 * (20 + (score * 0.6)), 2)  # -20% ~ -79.4% 범위
-        adv_usd_m = round(0.5 + (score * 0.08), 2)      # 0.5 ~ 8.42 (백만달러 가정)
+        dd_52w = round(-1.0 * (20 + (score * 0.6)), 2)  # -20% ~ -79.4%
+        adv_usd_m = round(0.5 + (score * 0.08), 2)      # 0.5 ~ 8.42 ($M 가정)
         rows.append({
             "ticker": t,
             "dd_52w_pct": dd_52w,
@@ -122,7 +138,6 @@ def fake_scan_candidates(tickers: list[str]) -> list[dict]:
             "note": "FAKE_SCAN",
         })
 
-    # 정렬: 낙폭 큰 순(더 음수), 그 다음 거래대금 큰 순
     rows.sort(key=lambda r: (r["dd_52w_pct"], -r["adv_usd_m"]))
     return rows
 
@@ -293,7 +308,7 @@ def main() -> None:
             "intel_text_ko": intel_text_ko,
             "universe_count": run_json["counts"]["universe"],
             "candidates_count": run_json["counts"]["candidates_raw"],
-            "scan_table_html": scan_table_html,
+            "scan_table_html": scan_table_html,  # RAW 삽입 대상
         }
         build_dashboard_html(dashboard_template, dashboard_out, ctx)
         run_json["artifacts"]["dashboard"] = str(dashboard_out)
