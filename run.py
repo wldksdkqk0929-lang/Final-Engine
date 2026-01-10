@@ -12,7 +12,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import yaml
 import requests
 
-
 NASDQ_NASDAQTRADED_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqtraded.txt"
 NASDQ_OTHERLISTED_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt"
 
@@ -37,6 +36,22 @@ def read_json(path: Path, default=None):
         return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return default
+
+
+def read_json_any(paths: list[Path], default=None):
+    for p in paths:
+        obj = read_json(p, default=None)
+        if obj is not None:
+            return obj, str(p)
+    return default, None
+
+
+def write_json_all(paths: list[Path], obj) -> None:
+    for p in paths:
+        try:
+            write_json(p, obj)
+        except Exception:
+            pass
 
 
 def read_text(path: Path) -> str:
@@ -140,8 +155,8 @@ def safe_html_escape(s: str) -> str:
 def build_dashboard_html(template_path: Path, out_path: Path, context: dict) -> None:
     tpl = read_text(template_path)
     html = tpl
-
     raw_keys = {"scan_table_html", "survivors_table_html", "intel_table_html"}
+
     for key, val in context.items():
         token = f"{{{{{key}}}}}"
         rendered = "" if val is None else str(val)
@@ -162,15 +177,10 @@ def _download_text(url: str, timeout_sec: int) -> str:
 def _is_equity_like(symbol: str, name: str) -> bool:
     n = (name or "").lower()
     bad_keywords = [
-        "warrant", "warrants",
-        "rights",
-        "units",
-        "preferred",
-        "depositary",
-        "note", "notes",
-        "bond", "bonds",
-        "trust",
-        "etn",
+        "warrant", "warrants", "rights", "units",
+        "preferred", "depositary",
+        "note", "notes", "bond", "bonds",
+        "trust", "etn",
     ]
     if any(k in n for k in bad_keywords):
         return False
@@ -361,7 +371,6 @@ def compute_real_metrics_from_rows(rows: list[dict], adv_window: int) -> dict | 
     adv_usd_m = round(adv_usd / 1_000_000.0, 2)
 
     scan_score = int(min(999, max(0, round(-dd_52w_pct * 10))))
-
     return {
         "dd_52w_pct": dd_52w_pct,
         "adv_usd_m": adv_usd_m,
@@ -602,7 +611,7 @@ def render_prompt(template: str, ticker: str) -> str:
     return template.replace("{{ticker}}", ticker)
 
 
-def gemini_generate(api_key: str, model: str, prompt: str, timeout: int = 80) -> str:
+def gemini_generate_rest(api_key: str, model: str, prompt: str, timeout: int = 80) -> str:
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
@@ -617,14 +626,25 @@ def gemini_generate(api_key: str, model: str, prompt: str, timeout: int = 80) ->
         return json.dumps(data, ensure_ascii=False)
 
 
-def build_intel(survivors: list[dict], cfg: dict) -> tuple[list[dict], str]:
-    api_key = (os.environ.get("GEMINI_API_KEY") or "").strip()
+def build_intel(survivors: list[dict], cfg: dict) -> tuple[list[dict], str, int]:
+    api_key = (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or "").strip()
     model = cfg.get("engine", {}).get("model", "gemini-2.5-flash")
     template = cfg.get("engine", {}).get("prompt_ko_template", "티커: {{ticker}}\n한국어로 요약해줘.")
 
     if not api_key:
         out = [{"ticker": s["ticker"], "status": "SKIPPED", "reason": "NO_API_KEY", "text_ko": ""} for s in survivors]
-        return out, "SKIPPED"
+        return out, "SKIPPED", 0
+
+    # 1) google-genai 있으면 우선 사용, 없으면 REST
+    use_sdk = False
+    client = None
+    try:
+        from google import genai  # type: ignore
+        client = genai.Client(api_key=api_key)
+        use_sdk = True
+    except Exception:
+        use_sdk = False
+        client = None
 
     out = []
     ok = 0
@@ -632,13 +652,21 @@ def build_intel(survivors: list[dict], cfg: dict) -> tuple[list[dict], str]:
         t = s["ticker"]
         prompt = render_prompt(template, t)
         try:
-            text = gemini_generate(api_key, model, prompt)
-            out.append({"ticker": t, "status": "SUCCESS", "reason": None, "text_ko": text})
-            ok += 1
+            if use_sdk and client is not None:
+                resp = client.models.generate_content(model=model, contents=prompt)
+                text = (resp.text or "").strip()
+            else:
+                text = gemini_generate_rest(api_key, model, prompt)
+
+            if text:
+                out.append({"ticker": t, "status": "SUCCESS", "reason": None, "text_ko": text})
+                ok += 1
+            else:
+                out.append({"ticker": t, "status": "FAILED", "reason": "EMPTY_TEXT", "text_ko": ""})
         except Exception as e:
             out.append({"ticker": t, "status": "FAILED", "reason": str(e), "text_ko": ""})
 
-    return out, ("SUCCESS" if ok > 0 else "FAILED")
+    return out, ("SUCCESS" if ok > 0 else "FAILED"), ok
 
 
 def build_intel_table_html(rows: list[dict], top_n: int = 10) -> str:
@@ -707,23 +735,28 @@ def main() -> None:
     expand_scan_limit = int(run_cfg.get("expand_scan_limit", 500))
     intel_n = int(run_cfg.get("intel_n", 30))
 
-    # ✅ 핵심 변경: state/coverage를 stooq 캐시 폴더 안에 저장
+    # stooq csv cache dir (이미 네가 cache_hit로 확인한 “살아있는” 영역)
     stooq_cache_dir = Path("data/cache/stooq")
     ensure_dir(stooq_cache_dir)
-    state_path = stooq_cache_dir / "state.json"
-    coverage_path = stooq_cache_dir / "coverage_universe.json"
+
+    # ✅ coverage/state를 “양쪽 경로”에서 읽고, 양쪽에 동시에 저장 (캐시 설정이 뭐든 살아남게)
+    legacy_state = Path("data/cache/state.json")
+    legacy_cov = Path("data/cache/coverage_universe.json")
+    stooq_state = stooq_cache_dir / "state.json"
+    stooq_cov = stooq_cache_dir / "coverage_universe.json"
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     run_id = f"{ts}_{uuid.uuid4().hex[:8]}"
-    run_dir = logs_root / run_id
+    run_dir = Path(paths["logs_root"]) / run_id
     ensure_dir(run_dir)
 
-    state = read_json(state_path, default={"universe_offset": 0, "coverage_offset": 0}) or {}
-    universe_offset = int(state.get("universe_offset", 0))
-    coverage_offset = int(state.get("coverage_offset", 0))
+    state_obj, state_loaded_from = read_json_any([stooq_state, legacy_state], default={"universe_offset": 0, "coverage_offset": 0})
+    universe_offset = int((state_obj or {}).get("universe_offset", 0))
+    coverage_offset = int((state_obj or {}).get("coverage_offset", 0))
 
-    coverage = read_json(coverage_path, default={"tickers": []}) or {"tickers": []}
-    coverage_tickers = sorted({t.strip().upper() for t in coverage.get("tickers", []) if isinstance(t, str) and t.strip()})
+    cov_obj, cov_loaded_from = read_json_any([stooq_cov, legacy_cov], default={"tickers": []})
+    cov_list = (cov_obj or {}).get("tickers", [])
+    coverage_tickers = sorted({t.strip().upper() for t in cov_list if isinstance(t, str) and t.strip()})
 
     run_json = {
         "engine_name": engine_name,
@@ -743,6 +776,10 @@ def main() -> None:
         "run_mode": mode,
         "coverage": {"before": len(coverage_tickers), "after": None},
         "scan_source": None,
+        "state_loaded_from": state_loaded_from,
+        "coverage_loaded_from": cov_loaded_from,
+        "coverage_paths": {"stooq": str(stooq_cov), "legacy": str(legacy_cov)},
+        "state_paths": {"stooq": str(stooq_state), "legacy": str(legacy_state)},
     }
 
     # A) Universe
@@ -764,8 +801,7 @@ def main() -> None:
 
     # Decide scan list
     if mode == "expand":
-        scan_n = max(1, expand_scan_limit)
-        scan_list, universe_offset = slice_with_wrap(tickers_all, universe_offset, scan_n)
+        scan_list, universe_offset = slice_with_wrap(tickers_all, universe_offset, max(1, expand_scan_limit))
         run_json["scan_source"] = "expand_from_universe"
     else:
         use_cov = len(coverage_tickers) >= coverage_min
@@ -796,11 +832,11 @@ def main() -> None:
     for t in real_tickers:
         cov_set.add(t)
     new_cov = sorted(cov_set)[:coverage_cap]
-    write_json(coverage_path, {"created_at_utc": now_utc_iso(), "tickers": new_cov})
     run_json["coverage"]["after"] = len(new_cov)
 
-    # Save cursor state
-    write_json(state_path, {
+    # ✅ 양쪽에 같이 저장
+    write_json_all([stooq_cov, legacy_cov], {"created_at_utc": now_utc_iso(), "tickers": new_cov})
+    write_json_all([stooq_state, legacy_state], {
         "updated_at_utc": now_utc_iso(),
         "universe_offset": universe_offset,
         "coverage_offset": coverage_offset,
@@ -819,12 +855,15 @@ def main() -> None:
     run_json["artifacts"]["survivors"] = str(survivors_out)
     run_json["counts"]["survivors"] = len(survivors)
 
-    # C) Intel (gemini REST)
-    intel_rows, intel_status = build_intel(survivors[:intel_n], cfg)
+    # C) Intel
+    intel_targets = survivors[: max(0, min(intel_n, len(survivors)))]
+    intel_rows, intel_status, intel_ok = build_intel(intel_targets, cfg)
     write_json(intel_out, intel_rows)
     run_json["artifacts"]["intel_30"] = str(intel_out)
     run_json["intel_status"] = intel_status
-    run_json["counts"]["intel"] = len([x for x in intel_rows if x.get("status") == "SUCCESS"])
+
+    run_json["counts"]["intel"] = len(intel_targets)          # “요청 개수”
+    run_json["counts"]["intel_success"] = int(intel_ok)       # “성공 개수”
 
     # D) Dashboard
     try:
@@ -841,7 +880,7 @@ def main() -> None:
             "universe_count": run_json["counts"]["universe_scanned"],
             "candidates_count": run_json["counts"]["candidates_raw"],
             "survivors_count": run_json["counts"]["survivors"],
-            "intel_count": run_json["counts"]["intel"],
+            "intel_count": run_json["counts"]["intel_success"],
             "scan_table_html": scan_table_html,
             "survivors_table_html": survivors_table_html,
             "intel_table_html": intel_table_html,
@@ -854,13 +893,12 @@ def main() -> None:
     except Exception as e:
         run_json["errors"].append(f"dashboard_error:{repr(e)}")
 
-    # run.json 저장
     write_json(run_dir / "run.json", run_json)
     print(
         "[OK] "
-        f"run_id={run_id} mode={mode} status={run_json['status']} "
-        f"scan_source={run_json.get('scan_source')} "
-        f"coverage_before={run_json['coverage']['before']} coverage_after={run_json['coverage']['after']}"
+        f"run_id={run_id} mode={mode} scan_source={run_json.get('scan_source')} "
+        f"coverage_before={run_json['coverage']['before']} coverage_after={run_json['coverage']['after']} "
+        f"intel_status={run_json.get('intel_status')}"
     )
 
 
