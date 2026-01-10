@@ -26,7 +26,7 @@ universe:
   max_symbols: 6500
 
 run:
-  scan_limit: 800
+  scan_limit: 1200
   intel_n: 30
 
 scanner:
