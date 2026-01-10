@@ -4,15 +4,19 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+
 def now_utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
 
 def ensure_dir(p: Path) -> None:
     p.mkdir(parents=True, exist_ok=True)
 
-def write_json(path: Path, obj: dict) -> None:
+
+def write_json(path: Path, obj) -> None:
     ensure_dir(path.parent)
     path.write_text(json.dumps(obj, ensure_ascii=False, indent=2), encoding="utf-8")
+
 
 def main() -> None:
     # run_id (재현/추적용)
@@ -28,6 +32,7 @@ def main() -> None:
     ensure_dir(out_dir)
 
     run_json = {
+        "engine_name": "Final Engine",
         "run_id": run_id,
         "created_at_utc": now_utc_iso(),
         "status": "STARTED",
@@ -97,6 +102,7 @@ def main() -> None:
 
     write_json(run_dir / "run.json", run_json)
     print(f"[OK] run_id={run_id} status={run_json['status']}")
+
 
 if __name__ == "__main__":
     main()
