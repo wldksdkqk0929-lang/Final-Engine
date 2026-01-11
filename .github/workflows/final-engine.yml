@@ -63,7 +63,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyyaml requests google-genai
+          pip install pyyaml requests google-genai yfinance
 
       - name: Run Final Engine
         run: python run.py
