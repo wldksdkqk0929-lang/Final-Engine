@@ -26,7 +26,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # [핵심 수정 1] 이전 실행 결과(캐시)를 강제로 다운로드 (브랜치 제한 해제)
+      # [핵심] 이전 실행 결과(캐시)를 강제로 다운로드
       - name: Download previous cache artifact
         continue-on-error: true
         uses: dawidd6/action-download-artifact@v6
@@ -36,9 +36,9 @@ jobs:
           workflow_conclusion: success
           name: final-engine-cache
           path: download_cache
-          search_artifacts: true  # 다른 브랜치나 이전 기록까지 샅샅이 검색
+          search_artifacts: true
 
-      # [핵심 수정 2] 다운로드한 캐시를 제자리로 복구
+      # [핵심] 캐시 복원
       - name: Restore cache files
         shell: bash
         run: |
@@ -49,9 +49,8 @@ jobs:
             [ -f "download_cache/coverage_universe.json" ] && cp download_cache/coverage_universe.json data/cache/coverage_universe.json
             [ -f "download_cache/stooq/state.json" ] && cp download_cache/stooq/state.json data/cache/stooq/state.json
             [ -f "download_cache/stooq/coverage_universe.json" ] && cp download_cache/stooq/coverage_universe.json data/cache/stooq/coverage_universe.json
-            ls -R data/cache
           else
-            echo "⚠️ No previous cache found. Starting fresh (Coverage will be 0 this time)."
+            echo "⚠️ No previous cache found. Starting fresh."
           fi
 
       - name: Setup Python
@@ -60,6 +59,7 @@ jobs:
           python-version: "3.11"
           cache: pip
 
+      # [수정됨] yfinance가 추가된 최종 설치 명령어
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -68,7 +68,7 @@ jobs:
       - name: Run Final Engine
         run: python run.py
 
-      # [핵심 수정 3] 다음 실행을 위해 이번 결과를 '덮어쓰기' 모드로 저장
+      # [핵심] 다음 실행을 위해 이번 결과를 저장
       - name: Upload cache artifact (Persistence)
         if: always()
         uses: actions/upload-artifact@v4
@@ -82,6 +82,7 @@ jobs:
             data/cache/stooq/state.json
             data/cache/stooq/coverage_universe.json
 
+      # 대시보드(index.html) 결과물 저장
       - name: Upload dashboard and logs
         if: always()
         uses: actions/upload-artifact@v4
