@@ -1,12 +1,52 @@
 engine:
   name: "Final Engine"
   provider: "gemini"
-  model: "gemini-2.5-flash"
-  prompt_ko: "턴어라운드 스나이퍼 전략에서 뉴스→펀더멘털→차트 필터 순서를 한국어로 3줄 요약해줘."
+  # [수정] 2.5(환각) -> 1.5-flash(실제 모델)
+  model: "gemini-1.5-flash"
+  prompt_ko_template: |
+    너는 미국 주식 턴어라운드 스나이퍼 전략 분석가다.
+    티커: {{ticker}}
+    아래 형식으로 한국어로만 답해라.
+    - 핵심 악재(1줄)
+    - 회복 신호(1줄)
+    - 확인할 지표(3개)
+    - 결론(관찰/예비/확정 중 1개)
 
 paths:
   logs_root: "data/logs/runs"
+  universe_out: "data/processed/universe/universe.json"
+  candidates_out: "data/processed/candidates_raw/candidates_raw.json"
+  survivors_out: "data/processed/survivors/survivors.json"
   intel_out: "data/processed/intel_30/intel_30.json"
+  dashboard_out: "data/artifacts/dashboard/index.html"
+  dashboard_template: "templates/dashboard.html"
+
+universe:
+  provider: "nasdaqtrader"
+  exclude_etf: true
+  max_symbols: 6500
 
 run:
-  test_ticker: "TEST"
+  mode: "daily"
+  coverage_min: 600
+  coverage_cap: 6000
+  scan_limit: 800
+  expand_scan_limit: 500
+  intel_n: 30
+
+scanner:
+  provider: "stooq"
+  lookback_days: 365
+  adv_window: 20
+  timeout_sec: 20
+  retries: 4
+  max_workers: 4
+  cache_ttl_hours: 168
+  fallback_to_fake: true
+
+funnel:
+  survivors_n: 30
+  min_price_usd: 5.0
+  min_adv_usd_m: 20.0
+  min_dd_52w_pct: -95.0
+  max_dd_52w_pct: -15.0
