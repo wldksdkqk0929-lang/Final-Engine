@@ -15,19 +15,19 @@ def install_and_import(package, pip_name=None):
         return __import__(package)
     except ImportError:
         print(f"📦 {pip_name} 설치 중...")
-        # googletrans는 특정 버전을 설치해야 안정적입니다.
-        if pip_name == "googletrans":
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "googletrans==4.0.0-rc1"])
-        else:
-            subprocess.check_call([sys.executable, "-m", "pip", "install", pip_name])
+        subprocess.check_call([sys.executable, "-m", "pip", "install", pip_name])
         return __import__(package)
 
 yf = install_and_import("yfinance")
 requests = install_and_import("requests")
 yaml = install_and_import("yaml")
-# [NEW] 번역기 라이브러리 추가
-googletrans = install_and_import("googletrans")
-from googletrans import Translator
+
+# [핵심] 안정적인 번역기 (Deep Translator)
+try:
+    from deep_translator import GoogleTranslator
+except ImportError:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "deep-translator"])
+    from deep_translator import GoogleTranslator
 
 # ==========================================
 # 2. 로직: 낙폭 과대주 선별 (Brain)
@@ -35,7 +35,7 @@ from googletrans import Translator
 def run_logic():
     print("🧠 [Brain] 낙폭 과대주 분석 엔진 가동...")
     
-    # 분석 유니버스 (확장됨)
+    # 분석 대상 유니버스
     universe = [
         "MARA", "LCID", "TSLA", "INTC", "PLTR", "SOFI", "AMD", "NVDA", 
         "RIVN", "OPEN", "IONQ", "JOBY", "UPST", "AFRM", "COIN", "MSTR", "CVNA"
@@ -71,66 +71,95 @@ def run_logic():
     return survivors
 
 # ==========================================
-# 3. 뉴스 엔진: 구글 RSS + 한글 번역 (NEW 🚀)
+# 3. 뉴스 엔진: 중요도 가중치 정렬 (NEW 🚀)
 # ==========================================
-def get_google_news_rss_translated(symbol):
-    print(f"📰 {symbol} 뉴스 수집 및 번역 시도...")
-    news_items = []
+def calculate_relevance_score(title_en):
+    """
+    제목에 '턴어라운드 핵심 키워드'가 있으면 점수를 높게 부여합니다.
+    """
+    score = 0
+    title_lower = title_en.lower()
+    
+    # 1티어: 규제, 승인, 소송 결과 (가장 중요)
+    tier1_keywords = ['sec', 'fda', 'approved', 'dismissed', 'lawsuit', 'regulation', 'settlement', 'won', 'cleared', 'ban']
+    for kw in tier1_keywords:
+        if kw in title_lower:
+            score += 10
+            
+    # 2티어: 실적, 급등락 (차선)
+    tier2_keywords = ['earnings', 'revenue', 'profit', 'surge', 'jump', 'plunge', 'crash', 'record', 'upgrade', 'downgrade']
+    for kw in tier2_keywords:
+        if kw in title_lower:
+            score += 5
+            
+    return score
+
+def get_google_news_rss_optimized(symbol):
+    print(f"📰 {symbol} 뉴스 수집 및 중요도 분석 중...")
+    raw_news_items = []
+    
     try:
-        # 1. 영어 뉴스 가져오기
+        # RSS 요청 (기본적으로 구글은 '관련도 순'으로 줍니다)
         url = f"https://news.google.com/rss/search?q={symbol}+stock&hl=en-US&gl=US&ceid=US:en"
         resp = requests.get(url, timeout=10)
         
         if resp.status_code == 200:
             root = ET.fromstring(resp.content)
-            raw_items = root.findall('./channel/item')[:3] # 상위 3개
+            items = root.findall('./channel/item')
             
-            # 2. 번역기 준비
-            translator = Translator()
-            english_titles = []
-            
-            # 데이터 추출 및 전처리
-            for item in raw_items:
+            # 데이터 가공
+            for item in items:
                 title = item.find('title').text
-                # 언론사명 제거 (깔끔한 번역을 위해) "제목 - 언론사" -> "제목"
-                if " - " in title:
-                    title = title.rsplit(" - ", 1)[0]
-                english_titles.append(title)
+                if " - " in title: title = title.rsplit(" - ", 1)[0]
                 
                 pubDate = item.find('pubDate').text
                 try:
-                    dt = datetime.strptime(pubDate[:16], "%a, %d %b %Y")
-                    date_str = dt.strftime("%Y.%m.%d")
+                    dt_obj = datetime.strptime(pubDate[:16], "%a, %d %b %Y")
+                    date_str = dt_obj.strftime("%Y.%m.%d")
                 except:
                     date_str = ""
-                    
-                news_items.append({
-                    "link": item.find('link').text,
-                    "date": date_str,
-                    "title_en": title, # 원문 보관
-                    "title_ko": title  # 기본값은 원문 (번역 실패 대비)
-                })
+                
+                # [핵심] 중요도 점수 계산
+                score = calculate_relevance_score(title)
 
-            # 3. 일괄 한글 번역 실행 (속도 향상)
-            if english_titles:
+                raw_news_items.append({
+                    "title_en": title,
+                    "link": item.find('link').text,
+                    "date_str": date_str,
+                    "score": score  # 점수 저장
+                })
+            
+            # [정렬 로직] 1순위: 중요도 점수(내림차순), 2순위: 원래 구글 순서
+            raw_news_items.sort(key=lambda x: x['score'], reverse=True)
+            
+            # 상위 3개 추출
+            top_news = raw_news_items[:3]
+            
+            # 번역 실행 (Deep Translator)
+            translator = GoogleTranslator(source='auto', target='ko')
+            final_items = []
+            
+            for item in top_news:
                 try:
-                    print(f"  -> {len(english_titles)}개 기사 번역 중...")
-                    translations = translator.translate(english_titles, dest='ko')
-                    for i, translation in enumerate(translations):
-                        news_items[i]['title_ko'] = translation.text
-                    print("  -> 번역 완료 ✅")
-                except Exception as e:
-                    print(f"⚠️ 번역 중 오류 발생 (원문으로 표시): {e}")
-                    # 번역 실패해도 news_items에는 원문이 들어가 있으므로 괜찮음
+                    # 중요 키워드가 있어서 점수가 높으면 제목 앞에 [★] 표시
+                    prefix = "★ " if item['score'] >= 10 else ""
+                    
+                    translated = translator.translate(item['title_en'])
+                    item['title_ko'] = prefix + translated
+                except:
+                    item['title_ko'] = item['title_en']
+                final_items.append(item)
+                
+            return final_items
 
     except Exception as e:
-        print(f"⚠️ {symbol} 뉴스 수집 실패: {e}")
+        print(f"⚠️ {symbol} 뉴스 처리 오류: {e}")
         return []
     
-    return news_items
+    return []
 
 # ==========================================
-# 4. 시각화: V6.3 한글 대시보드
+# 4. 시각화: V6.5 터미널 (디자인 유지)
 # ==========================================
 def generate_dashboard(targets):
     html_cards = ""
@@ -139,21 +168,22 @@ def generate_dashboard(targets):
         sym = stock['symbol']
         chart_id = f"tv_{sym}"
         
-        # 뉴스 데이터 가져오기 (번역된 버전)
-        news_data = get_google_news_rss_translated(sym)
+        news_data = get_google_news_rss_optimized(sym)
         
         news_html = ""
         if news_data:
             for n in news_data:
-                # 한글 제목 사용 (마우스 올리면 영어 원문 툴팁 표시)
+                # 툴팁에 영어 원문 표시
                 news_html += f"""
                 <div class='news-item'>
-                    <span class='date'>{n['date']}</span>
-                    <a href='{n['link']}' target='_blank' title='원문: {n['title_en']}'>{n['title_ko']}</a>
+                    <span class='date'>{n['date_str']}</span>
+                    <a href='{n['link']}' target='_blank' title='[원문] {n['title_en']}'>
+                        {n['title_ko']}
+                    </a>
                 </div>
                 """
         else:
-            news_html = "<p class='no-news'>최신 관련 뉴스가 없습니다.</p>"
+            news_html = "<p class='no-news'>관련 주요 뉴스가 없습니다.</p>"
 
         google_search_url = f"https://www.google.com/search?q={sym}+주식+뉴스&tbm=nws"
         news_footer = f"""
@@ -178,7 +208,7 @@ def generate_dashboard(targets):
             </div>
             <div class="card-body">
                 <div class="news-section">
-                    <h4>주요 뉴스 브리핑 (AI 번역)</h4>
+                    <h4>📰 주요 뉴스 (AI 중요도 분석)</h4>
                     <div class="news-list">
                         {news_html}
                     </div>
@@ -230,7 +260,7 @@ def generate_dashboard(targets):
             .news-item:last-child {{ border-bottom: none; }}
             .news-item a {{ color: var(--text-main); text-decoration: none; font-size: 0.95em; display: block; margin-top: 4px; line-height: 1.4; }}
             .news-item a:hover {{ color: var(--accent-blue); }}
-            .date {{ font-size: 0.75em; color: var(--text-sub); display: block; }}
+            .date {{ font-size: 0.75em; color: var(--text-sub); display: block; margin-bottom: 4px; }}
             .no-news {{ color: var(--text-sub); font-style: italic; }}
             .news-footer {{ padding-top: 15px; border-top: 1px solid var(--border-color); text-align: center; }}
             .google-btn {{ background: #2a2e39; color: #fff; padding: 8px 16px; border-radius: 20px; text-decoration: none; font-size: 0.85em; transition: 0.3s; display: inline-block; }}
@@ -241,7 +271,7 @@ def generate_dashboard(targets):
     </head>
     <body>
         <div class="container">
-            <h1>TURNAROUND SNIPER <span style="font-size:0.5em; color:#777;">V6.3 KR</span></h1>
+            <h1>TURNAROUND SNIPER <span style="font-size:0.5em; color:#777;">V6.5 KR</span></h1>
             {html_cards}
         </div>
     </body>
