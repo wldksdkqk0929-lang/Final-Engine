@@ -5,7 +5,7 @@ on:
   schedule:
     - cron: "5 15 * * *"
 
-# [핵심] 권한 설정
+# [핵심] 일꾼에게 "전시장 건설(쓰기)" 권한 부여
 permissions:
   contents: write
 
@@ -30,10 +30,10 @@ jobs:
       - name: Run Sniper Engine
         run: python run.py
 
-      # [이 부분이 빠져있어서 브랜치가 안 생긴 겁니다!]
+      # 👇 [이게 없어서 안 생긴 겁니다!] 전시장(gh-pages) 건설 및 배포 단계
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./data/artifacts/dashboard
-          force_orphan: true
+          force_orphan: true  # 기존 내용 덮어쓰기
