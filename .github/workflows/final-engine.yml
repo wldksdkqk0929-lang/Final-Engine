@@ -5,7 +5,7 @@ on:
   schedule:
     - cron: "5 15 * * *"
 
-# [핵심] 웹사이트를 만들 권한을 줍니다
+# [핵심] 권한 설정
 permissions:
   contents: write
 
@@ -30,10 +30,10 @@ jobs:
       - name: Run Sniper Engine
         run: python run.py
 
-      # [이게 빠져있었습니다!] 웹사이트 배포 단계
+      # [이 부분이 빠져있어서 브랜치가 안 생긴 겁니다!]
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./data/artifacts/dashboard
-          force_orphan: true  # 기존 내용 무시하고 덮어쓰기
+          force_orphan: true
