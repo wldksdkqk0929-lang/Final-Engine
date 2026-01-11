@@ -1,0 +1,40 @@
+name: Sniper Engine V6
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "5 15 * * *"
+
+# [핵심] 권한 설정: 전시장(gh-pages)을 만들 수 있는 권한
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests yfinance pyyaml deep-translator
+
+      # [확인 포인트] 로그에서 이 이름이 보여야 진짜입니다!
+      - name: Run Sniper Engine (Real)
+        run: python run.py
+
+      # [배포 단계]
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./data/artifacts/dashboard
+          force_orphan: true
