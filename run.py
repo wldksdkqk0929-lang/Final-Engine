@@ -23,8 +23,8 @@ yaml = install_and_import("yaml")
 def run_logic():
     print("🧠 [Brain] 낙폭 과대주 분석 엔진 가동...")
     
-    # 분석 대상 유니버스 (대표적인 변동성 종목들)
-    universe = ["MARA", "TSLA", "INTC", "PLTR", "SOFI", "AMD", "NVDA", "WBA", "PFE", "GOOGL", "RIVN", "LCID"]
+    # 분석 대상 유니버스 (변동성 큰 기술/성장주 위주)
+    universe = ["MARA", "LCID", "TSLA", "INTC", "PLTR", "SOFI", "AMD", "NVDA", "RIVN", "OPEN", "IONQ", "JOBY"]
     
     survivors = []
     print(f"🔍 {len(universe)}개 종목 스캔 중...")
@@ -32,7 +32,6 @@ def run_logic():
     for sym in universe:
         try:
             t = yf.Ticker(sym)
-            # 1년치 데이터 가져오기
             hist = t.history(period="1y")
             if len(hist) < 20: continue
             
@@ -57,7 +56,7 @@ def run_logic():
     return survivors
 
 # ==========================================
-# 3. 시각화: 다크 모드 대시보드 (Dark UI)
+# 3. 시각화: 다크 모드 & 뉴스 기능 강화
 # ==========================================
 def generate_dashboard(targets):
     html_cards = ""
@@ -66,22 +65,24 @@ def generate_dashboard(targets):
         sym = stock['symbol']
         chart_id = f"tv_{sym}"
         
-        # 뉴스 데이터 수집 (날짜 버그 수정 포함)
+        # --- [뉴스 데이터 처리 강화] ---
+        news_html = ""
         try:
             t = yf.Ticker(sym)
             raw_news = t.news
-            news_html = ""
+            
             if raw_news:
-                for n in raw_news[:3]: # 최신 3개
-                    title = n.get('title', n.get('headline', '제목 없음'))
-                    link = n.get('link', '#')
+                count = 0
+                for n in raw_news:
+                    if count >= 3: break # 최대 3개
                     
-                    # 날짜 변환 (1970년 버그 수정)
+                    # 제목 추출 시도 (여러 키 확인)
+                    title = n.get('title', n.get('headline', ''))
+                    link = n.get('link', f"https://finance.yahoo.com/quote/{sym}")
+                    
+                    # 날짜 변환
                     ts = n.get('providerPublishTime', 0)
-                    if ts > 0:
-                        date_str = datetime.fromtimestamp(ts).strftime('%Y.%m.%d')
-                    else:
-                        date_str = ""
+                    date_str = datetime.fromtimestamp(ts).strftime('%Y.%m.%d') if ts > 0 else ""
                     
                     if title:
                         news_html += f"""
@@ -90,14 +91,26 @@ def generate_dashboard(targets):
                             <a href='{link}' target='_blank'>{title}</a>
                         </div>
                         """
+                        count += 1
             
+            # 뉴스가 없거나 제목 추출 실패 시
             if not news_html: 
-                news_html = "<p class='no-news'>최근 뉴스 데이터가 없습니다.</p>"
-                
-        except Exception as e:
-            news_html = f"<p class='error'>뉴스 로딩 실패</p>"
+                news_html = "<p class='no-news'>야후 파이낸스 데이터 수신 대기중...</p>"
 
-        # 카드 HTML 조립
+        except Exception as e:
+            news_html = f"<p class='no-news'>뉴스 로딩 실패 ({str(e)})</p>"
+
+        # [필살기] 구글 뉴스 검색 버튼 추가
+        google_search_url = f"https://www.google.com/search?q={sym}+stock+news&tbm=nws"
+        news_footer = f"""
+        <div class="news-footer">
+            <a href="{google_search_url}" target="_blank" class="google-btn">
+                🔍 Google News 실시간 검색
+            </a>
+        </div>
+        """
+
+        # --- [카드 HTML 조립] ---
         html_cards += f"""
         <div class="card">
             <div class="card-header">
@@ -113,7 +126,10 @@ def generate_dashboard(targets):
             <div class="card-body">
                 <div class="news-section">
                     <h4>NEWS BRIEFING</h4>
-                    {news_html}
+                    <div class="news-list">
+                        {news_html}
+                    </div>
+                    {news_footer}
                 </div>
                 <div class="chart-section">
                     <div class="tradingview-widget-container" style="height:100%;width:100%">
@@ -125,7 +141,7 @@ def generate_dashboard(targets):
                             "symbol": "{sym}",
                             "interval": "D",
                             "timezone": "Etc/UTC",
-                            "theme": "dark",  /* 여기가 핵심: 다크 모드 */
+                            "theme": "dark",
                             "style": "1",
                             "locale": "kr",
                             "toolbar_bg": "#1e222d",
@@ -141,7 +157,7 @@ def generate_dashboard(targets):
         </div>
         """
 
-    # 전체 HTML 조립 (CSS: 다크 테마 적용)
+    # --- [전체 HTML 조립 (CSS 유지)] ---
     full_html = f"""
     <!DOCTYPE html>
     <html>
@@ -149,19 +165,18 @@ def generate_dashboard(targets):
         <meta charset="utf-8">
         <title>Sniper Dark Terminal</title>
         <style>
-            /* 다크 모드 기본 설정 */
             :root {{
-                --bg-color: #131722;       /* 트레이딩뷰 기본 배경색 */
-                --card-bg: #1e222d;        /* 카드 배경색 */
-                --text-main: #d1d4dc;      /* 기본 텍스트 */
-                --text-sub: #787b86;       /* 보조 텍스트 */
-                --accent-red: #f23645;     /* 하락/강조 색상 */
-                --accent-blue: #2962ff;    /* 링크 색상 */
-                --border-color: #2a2e39;   /* 테두리 색상 */
+                --bg-color: #131722;
+                --card-bg: #1e222d;
+                --text-main: #d1d4dc;
+                --text-sub: #787b86;
+                --accent-red: #f23645;
+                --accent-blue: #2962ff;
+                --border-color: #2a2e39;
             }}
             
             body {{
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
                 background-color: var(--bg-color);
                 color: var(--text-main);
                 margin: 0;
@@ -181,7 +196,6 @@ def generate_dashboard(targets):
                 -webkit-text-fill-color: transparent;
             }}
 
-            /* 카드 스타일 */
             .card {{
                 background-color: var(--card-bg);
                 border: 1px solid var(--border-color);
@@ -191,7 +205,6 @@ def generate_dashboard(targets):
                 box-shadow: 0 4px 12px rgba(0,0,0,0.3);
             }}
             
-            /* 카드 헤더 */
             .card-header {{
                 padding: 20px 25px;
                 border-bottom: 1px solid var(--border-color);
@@ -209,20 +222,18 @@ def generate_dashboard(targets):
                 padding: 6px 12px; 
                 border-radius: 4px; 
                 font-weight: bold; 
-                font-size: 1em;
             }}
             
-            /* 카드 바디 */
             .card-body {{ display: flex; flex-wrap: wrap; height: 450px; }}
             
-            /* 뉴스 영역 */
             .news-section {{
                 flex: 1;
                 min-width: 300px;
                 padding: 20px 25px;
                 border-right: 1px solid var(--border-color);
-                overflow-y: auto;
                 background-color: #1e222d;
+                display: flex;
+                flex-direction: column;
             }}
             
             .news-section h4 {{
@@ -232,6 +243,8 @@ def generate_dashboard(targets):
                 margin-bottom: 20px;
                 letter-spacing: 1px;
             }}
+            
+            .news-list {{ flex-grow: 1; overflow-y: auto; }}
             
             .news-item {{ margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid var(--border-color); }}
             .news-item:last-child {{ border-bottom: none; }}
@@ -249,13 +262,25 @@ def generate_dashboard(targets):
             .date {{ font-size: 0.75em; color: var(--text-sub); }}
             .no-news {{ color: var(--text-sub); font-style: italic; font-size: 0.9em; }}
 
-            /* 차트 영역 */
+            /* 구글 검색 버튼 스타일 */
+            .news-footer {{ margin-top: auto; padding-top: 15px; border-top: 1px solid var(--border-color); text-align: center; }}
+            .google-btn {{
+                display: inline-block;
+                background-color: #2a2e39;
+                color: #fff;
+                text-decoration: none;
+                padding: 8px 16px;
+                border-radius: 20px;
+                font-size: 0.85em;
+                transition: background 0.3s;
+            }}
+            .google-btn:hover {{ background-color: #2962ff; }}
+
             .chart-section {{ flex: 2; min-width: 400px; height: 100%; }}
             
-            /* 모바일 대응 */
             @media (max-width: 768px) {{
                 .card-body {{ height: auto; flex-direction: column; }}
-                .news-section {{ border-right: none; border-bottom: 1px solid var(--border-color); max-height: 300px; }}
+                .news-section {{ border-right: none; border-bottom: 1px solid var(--border-color); max-height: 350px; }}
                 .chart-section {{ height: 400px; }}
             }}
         </style>
@@ -276,6 +301,6 @@ def generate_dashboard(targets):
 if __name__ == "__main__":
     targets = run_logic()
     if not targets:
-        # 조건에 맞는게 없으면 MARA 강제 추가 (화면 확인용)
+        # 혹시 종목이 없으면 테스트용으로 MARA 추가
         targets = [{"symbol": "MARA", "price": 10.22, "dd": -56.42, "name": "Marathon Digital"}]
     generate_dashboard(targets)
