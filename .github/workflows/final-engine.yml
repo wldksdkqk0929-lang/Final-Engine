@@ -3,7 +3,7 @@ name: Final Engine
 on:
   workflow_dispatch:
   schedule:
-    - cron: "5 15 * * *"  # 매일 한국시간 00:05 실행
+    - cron: "5 15 * * *"
 
 concurrency:
   group: final-engine
@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
+      # API 키가 없어도 작동하지만, 변수 설정 오류 방지를 위해 남겨둡니다.
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
       FINAL_ENGINE_CONFIG: config/base.yaml
@@ -26,7 +27,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # [핵심] 이전 실행 결과(캐시)를 강제로 다운로드
+      # 1. 이전 캐시 파일 다운로드
       - name: Download previous cache artifact
         continue-on-error: true
         uses: dawidd6/action-download-artifact@v6
@@ -38,7 +39,7 @@ jobs:
           path: download_cache
           search_artifacts: true
 
-      # [핵심] 캐시 복원
+      # 2. 캐시 복원
       - name: Restore cache files
         shell: bash
         run: |
@@ -59,7 +60,7 @@ jobs:
           python-version: "3.11"
           cache: pip
 
-      # [수정됨] yfinance가 추가된 최종 설치 명령어
+      # [중요] 여기에 yfinance가 반드시 있어야 합니다!
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -68,7 +69,7 @@ jobs:
       - name: Run Final Engine
         run: python run.py
 
-      # [핵심] 다음 실행을 위해 이번 결과를 저장
+      # 3. 캐시 저장
       - name: Upload cache artifact (Persistence)
         if: always()
         uses: actions/upload-artifact@v4
@@ -82,7 +83,7 @@ jobs:
             data/cache/stooq/state.json
             data/cache/stooq/coverage_universe.json
 
-      # 대시보드(index.html) 결과물 저장
+      # 4. 결과물(대시보드) 저장
       - name: Upload dashboard and logs
         if: always()
         uses: actions/upload-artifact@v4
