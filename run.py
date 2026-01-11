@@ -2,6 +2,7 @@ import sys
 import subprocess
 import os
 import logging
+import xml.etree.ElementTree as ET # RSS 파싱용 (기본 내장)
 from datetime import datetime
 
 # ==========================================
@@ -15,53 +16,42 @@ def install_and_import(package):
         return __import__(package)
 
 yf = install_and_import("yfinance")
-requests = install_and_import("requests") # 요청 조작용 필수
+requests = install_and_import("requests")
 yaml = install_and_import("yaml")
 
 # ==========================================
-# 🚨 [핵심 변경] 야후 차단 우회용 세션 생성기
-# ==========================================
-def get_safe_session():
-    """
-    깃허브 액션(서버) IP 차단을 피하기 위해
-    일반 크롬 브라우저인 척 위장하는 세션을 만듭니다.
-    """
-    session = requests.Session()
-    session.headers.update({
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9,ko;q=0.8'
-    })
-    return session
-
-# ==========================================
-# 2. 로직: 낙폭 과대주 선별 (Brain)
+# 2. 로직: 낙폭 과대주 선별 (Brain) - 성공 ✅
 # ==========================================
 def run_logic():
     print("🧠 [Brain] 낙폭 과대주 분석 엔진 가동...")
     
-    # 분석 대상 (변동성 큰 기술/성장주)
-    universe = ["MARA", "LCID", "TSLA", "INTC", "PLTR", "SOFI", "AMD", "NVDA", "RIVN", "OPEN", "IONQ", "JOBY"]
+    # 100% 리얼 엔진 가동 (테스트용 하드코딩 아님)
+    # 우량 기술주 및 변동성 상위 종목 유니버스
+    universe = [
+        "MARA", "LCID", "TSLA", "INTC", "PLTR", "SOFI", "AMD", "NVDA", 
+        "RIVN", "OPEN", "IONQ", "JOBY", "UPST", "AFRM", "COIN", "MSTR"
+    ]
     
     survivors = []
-    print(f"🔍 {len(universe)}개 종목 스캔 중...")
-    
-    # [중요] 세션 적용: 이제부터 야후는 우리를 '브라우저'로 인식합니다.
-    safe_session = get_safe_session()
+    print(f"🔍 {len(universe)}개 종목 정밀 스캔 중...")
     
     for sym in universe:
         try:
-            # session 파라미터 추가
-            t = yf.Ticker(sym, session=safe_session)
-            
+            t = yf.Ticker(sym)
             hist = t.history(period="1y")
+            
+            # 데이터가 너무 적으면 패스
             if len(hist) < 20: continue
             
             high = hist['High'].max()
             cur = hist['Close'].iloc[-1]
+            
+            # 낙폭 계산
             dd = ((cur - high) / high) * 100
             
+            # [조건] 고점 대비 -40% 이상 하락한 종목만 통과
             if dd < -40:
+                print(f"  -> 🎯 타겟 포착: {sym} ({dd:.2f}%)")
                 survivors.append({
                     "symbol": sym,
                     "price": cur,
@@ -71,70 +61,97 @@ def run_logic():
         except:
             continue
             
+    # 낙폭이 큰 순서대로 정렬
+    survivors.sort(key=lambda x: x['dd'])
+    
     print(f"⚔️ 최종 생존 종목: {len(survivors)}개")
     return survivors
 
 # ==========================================
-# 3. 시각화: 뉴스 수집 로직 강화
+# 3. 뉴스 엔진: 구글 뉴스 RSS (NEW 🚀)
+# ==========================================
+def get_google_news_rss(symbol):
+    """
+    야후 파이낸스 대신 차단 걱정 없는 '구글 뉴스 RSS'를 사용합니다.
+    """
+    try:
+        # 구글 뉴스 RSS URL (종목 검색)
+        url = f"https://news.google.com/rss/search?q={symbol}+stock&hl=en-US&gl=US&ceid=US:en"
+        
+        # 깃허브 서버에서도 잘 통하는 일반 요청
+        resp = requests.get(url, timeout=5)
+        
+        if resp.status_code == 200:
+            root = ET.fromstring(resp.content)
+            news_items = []
+            
+            # 상위 3개 뉴스 추출
+            for item in root.findall('./channel/item')[:3]:
+                title = item.find('title').text
+                link = item.find('link').text
+                pubDate = item.find('pubDate').text
+                
+                # 날짜 포맷 정리 (Mon, 12 Jan 2026 -> 2026.01.12)
+                try:
+                    dt = datetime.strptime(pubDate[:16], "%a, %d %b %Y")
+                    date_str = dt.strftime("%Y.%m.%d")
+                except:
+                    date_str = "" # 날짜 변환 실패시 공란
+
+                # 출처(Source)가 제목에 포함된 경우 깔끔하게 정리
+                # 예: "Stock jumps 10% - CNBC" -> "Stock jumps 10%"
+                if " - " in title:
+                    title = title.rsplit(" - ", 1)[0]
+
+                news_items.append({
+                    "title": title,
+                    "link": link,
+                    "date": date_str
+                })
+            return news_items
+            
+    except Exception as e:
+        print(f"⚠️ {symbol} 구글 뉴스 가져오기 실패: {e}")
+        return []
+    
+    return []
+
+# ==========================================
+# 4. 시각화: 대시보드 생성 (V6.1 Terminal)
 # ==========================================
 def generate_dashboard(targets):
     html_cards = ""
-    safe_session = get_safe_session() # 여기서도 안전 세션 사용
     
     for stock in targets:
         sym = stock['symbol']
         chart_id = f"tv_{sym}"
         
-        # --- [뉴스 데이터 처리] ---
+        # --- [뉴스 데이터 수집: 구글 RSS] ---
+        news_data = get_google_news_rss(sym)
+        
         news_html = ""
-        try:
-            # 1. 안전 세션으로 접속 시도
-            t = yf.Ticker(sym, session=safe_session)
-            raw_news = t.news
-            
-            # 2. 데이터가 비어있다면(차단됨), 검색 URL을 대신 표시
-            if not raw_news:
-                print(f"⚠️ {sym}: 야후 뉴스 리스트가 비어있습니다. (IP 차단 가능성)")
-            
-            if raw_news:
-                count = 0
-                for n in raw_news:
-                    if count >= 3: break
-                    
-                    title = n.get('title', n.get('headline', ''))
-                    link = n.get('link', f"https://finance.yahoo.com/quote/{sym}")
-                    
-                    # 날짜 처리
-                    ts = n.get('providerPublishTime', 0)
-                    date_str = datetime.fromtimestamp(ts).strftime('%Y.%m.%d') if ts > 0 else ""
-                    
-                    if title:
-                        news_html += f"""
-                        <div class='news-item'>
-                            <span class='date'>{date_str}</span>
-                            <a href='{link}' target='_blank'>{title}</a>
-                        </div>
-                        """
-                        count += 1
-            
-            if not news_html: 
-                news_html = "<p class='no-news'>야후 파이낸스 수신 대기중 (하단 구글 버튼 이용)</p>"
+        if news_data:
+            for n in news_data:
+                news_html += f"""
+                <div class='news-item'>
+                    <span class='date'>{n['date']}</span>
+                    <a href='{n['link']}' target='_blank'>{n['title']}</a>
+                </div>
+                """
+        else:
+            news_html = "<p class='no-news'>최신 관련 뉴스가 없습니다.</p>"
 
-        except Exception as e:
-            print(f"❌ {sym} 뉴스 에러: {e}")
-            news_html = f"<p class='no-news'>뉴스 로딩 실패</p>"
-
-        # 구글 뉴스 버튼
+        # 구글 뉴스 더보기 버튼
         google_search_url = f"https://www.google.com/search?q={sym}+stock+news&tbm=nws"
         news_footer = f"""
         <div class="news-footer">
             <a href="{google_search_url}" target="_blank" class="google-btn">
-                🔍 Google News 실시간 검색
+                More News on Google ➜
             </a>
         </div>
         """
 
-        # --- [HTML 조립] ---
+        # --- [HTML 조립 (디자인 유지)] ---
         html_cards += f"""
         <div class="card">
             <div class="card-header">
@@ -149,7 +166,7 @@ def generate_dashboard(targets):
             </div>
             <div class="card-body">
                 <div class="news-section">
-                    <h4>NEWS BRIEFING</h4>
+                    <h4>NEWS BRIEFING (Google RSS)</h4>
                     <div class="news-list">
                         {news_html}
                     </div>
@@ -196,15 +213,16 @@ def generate_dashboard(targets):
             .price {{ font-size: 1.5em; font-weight: 600; color: #fff; margin-right: 15px; }}
             .badge {{ background: rgba(242, 54, 69, 0.15); color: var(--accent-red); padding: 5px 10px; border-radius: 4px; font-weight: bold; }}
             .card-body {{ display: flex; flex-wrap: wrap; height: 450px; }}
-            .news-section {{ flex: 1; min-width: 300px; padding: 20px; border-right: 1px solid var(--border-color); display: flex; flex-direction: column; }}
+            .news-section {{ flex: 1; min-width: 300px; padding: 20px; border-right: 1px solid var(--border-color); display: flex; flex-direction: column; background: #1e222d; }}
             .news-list {{ flex-grow: 1; overflow-y: auto; }}
             .news-item {{ margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid var(--border-color); }}
-            .news-item a {{ color: var(--text-main); text-decoration: none; }}
+            .news-item:last-child {{ border-bottom: none; }}
+            .news-item a {{ color: var(--text-main); text-decoration: none; font-size: 0.95em; display: block; margin-top: 4px; }}
             .news-item a:hover {{ color: var(--accent-blue); }}
-            .date {{ font-size: 0.75em; color: var(--text-sub); margin-right: 5px; }}
+            .date {{ font-size: 0.75em; color: var(--text-sub); display: block; }}
             .no-news {{ color: var(--text-sub); font-style: italic; }}
             .news-footer {{ padding-top: 15px; border-top: 1px solid var(--border-color); text-align: center; }}
-            .google-btn {{ background: #2a2e39; color: #fff; padding: 8px 16px; border-radius: 20px; text-decoration: none; font-size: 0.85em; transition: 0.3s; }}
+            .google-btn {{ background: #2a2e39; color: #fff; padding: 8px 16px; border-radius: 20px; text-decoration: none; font-size: 0.85em; transition: 0.3s; display: inline-block; }}
             .google-btn:hover {{ background: var(--accent-blue); }}
             .chart-section {{ flex: 2; min-width: 400px; height: 100%; }}
             @media (max-width: 768px) {{ .card-body {{ height: auto; }} .news-section {{ border-right: none; border-bottom: 1px solid var(--border-color); }} .chart-section {{ height: 400px; }} }}
@@ -212,7 +230,7 @@ def generate_dashboard(targets):
     </head>
     <body>
         <div class="container">
-            <h1>TURNAROUND SNIPER <span style="font-size:0.5em; color:#777;">V6.1</span></h1>
+            <h1>TURNAROUND SNIPER <span style="font-size:0.5em; color:#777;">V6.2</span></h1>
             {html_cards}
         </div>
     </body>
@@ -225,6 +243,8 @@ def generate_dashboard(targets):
 
 if __name__ == "__main__":
     targets = run_logic()
+    # 종목이 없을 경우를 대비한 안전장치 (화면 확인용)
     if not targets:
-        targets = [{"symbol": "MARA", "price": 10.22, "dd": -56.42, "name": "Marathon Digital"}]
+        print("⚠️ 스캔된 종목이 없습니다. (장이 좋거나 조건이 너무 까다로움)")
+        targets = [{"symbol": "MARA", "price": 0.00, "dd": 0.00, "name": "No Targets Found"}]
     generate_dashboard(targets)
