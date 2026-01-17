@@ -1,0 +1,149 @@
+
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <title>Hybrid Sniper V8.6 (Tactical Layer)</title>
+        <style>
+            :root {
+                --bg-color: #131722; --card-bg: #1e222d; --text-main: #d1d4dc;
+                --text-sub: #787b86; --accent-red: #f23645; --accent-blue: #2962ff;
+                --border-color: #2a2e39;
+            }
+            body { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg-color); color: var(--text-main); padding: 40px 20px; }
+            .container { max-width: 1200px; margin: 0 auto; }
+            h1 { text-align: center; margin-bottom: 40px; color: #fff; letter-spacing: 2px; }
+            .card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+            .card-header { padding: 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
+            .symbol { font-size: 1.8em; font-weight: 700; color: #fff; margin-right: 10px; }
+            .name { color: var(--text-sub); font-size: 0.9em; }
+            .price { font-size: 1.5em; font-weight: 600; color: #fff; margin-right: 15px; }
+            .badge { padding: 5px 10px; border-radius: 4px; font-weight: bold; font-size: 0.8em; margin-left: 5px; border: 1px solid #444; }
+            
+            .card-body { display: flex; flex-wrap: wrap; height: 600px; }
+            .left-section { flex: 1; min-width: 350px; padding: 20px; border-right: 1px solid var(--border-color); display: flex; flex-direction: column; }
+            
+            /* Tactical Structure Box */
+            .structure-box { background: #262b3e; border-radius: 6px; padding: 15px; margin-bottom: 15px; border: 1px solid #363c4e; }
+            .structure-box.action { border: 1px solid #e74c3c; background: rgba(231, 76, 60, 0.1); }
+            .structure-box.setup { border: 1px solid #e67e22; background: rgba(230, 126, 34, 0.1); }
+            .structure-box.invalid { opacity: 0.5; }
+            
+            .struct-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+            .struct-title { font-size: 0.9em; font-weight: bold; color: #fff; }
+            .struct-badge { padding: 3px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; color: #fff; }
+            
+            .trigger-msg { background: rgba(0,0,0,0.3); padding: 8px; border-radius: 4px; font-size: 0.85em; color: #f1c40f; margin-bottom: 10px; border-left: 3px solid #f1c40f; line-height: 1.4; }
+
+            .struct-metrics { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 0.8em; }
+            .s-item { display: flex; flex-direction: column; align-items: center; }
+            .s-arrow { color: var(--text-sub); font-size: 1.2em; }
+            .s-item .lbl { color: var(--text-sub); margin-bottom: 2px; font-size: 0.8em; }
+            .s-item .val { color: #fff; font-weight: bold; }
+            .struct-footer { text-align: center; border-top: 1px solid #363c4e; padding-top: 8px; font-size: 0.85em; color: var(--text-main); }
+
+            .news-section { flex-grow: 1; overflow-y: auto; margin-bottom: 15px; }
+            .news-item { margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #2a2e39; }
+            .tags-row { margin-bottom: 5px; }
+            .news-tag { font-size: 0.7em; color: #fff; padding: 2px 6px; border-radius: 3px; margin-right: 5px; display: inline-block; font-weight: bold; }
+            .news-item a { color: var(--text-main); text-decoration: none; font-size: 0.9em; display: block; line-height: 1.4; }
+            .news-item a:hover { color: var(--accent-blue); }
+            .date { font-size: 0.75em; color: var(--text-sub); display: block; margin-bottom: 2px; }
+            .no-news { color: var(--text-sub); font-style: italic; font-size: 0.9em; }
+
+            .timemachine-box { border-top: 1px solid var(--border-color); padding-top: 10px; display: flex; gap: 10px; }
+            .tm-item { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 8px; border-radius: 6px; }
+            .tm-item.crash { background: rgba(242, 54, 69, 0.1); border: 1px solid rgba(242, 54, 69, 0.3); }
+            .tm-item.rebound { background: rgba(38, 166, 154, 0.1); border: 1px solid rgba(38, 166, 154, 0.3); }
+            .tm-label { font-size: 0.75em; font-weight: bold; margin-bottom: 4px; }
+            .tm-btn { background: #2a2e39; color: var(--text-main); padding: 4px 10px; border-radius: 4px; text-decoration: none; font-size: 0.75em; width: 80%; text-align: center; }
+            .tm-btn:hover { background: #fff; color: #000; }
+
+            .chart-section { flex: 2; min-width: 400px; height: 100%; }
+            @media (max-width: 768px) { .card-body { height: auto; } .left-section { border-right: none; border-bottom: 1px solid var(--border-color); } .chart-section { height: 400px; } }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>SNIPER V8.6 <span style="font-size:0.5em; color:#e74c3c;">TACTICAL</span></h1>
+            
+        <div class="card">
+            <div class="card-header">
+                <div class="stock-info">
+                    <span class="symbol">DKNG</span>
+                    <span class="name">DraftKings Inc.</span>
+                </div>
+                <div class="stock-metrics">
+                    <span class="price">$32.62</span>
+                    <span class='badge' style='background:#2c3e50; color:#ecf0f1;'>Tier 2 (Growth)</span>
+                    <span class='badge' style='background:rgba(242, 54, 69, 0.15); color:#f23645;'>Vol 2.82x / Move 8.01%</span>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="left-section">
+                    
+                <div class="structure-box ignore">
+                    <div class="struct-header">
+                        <span class="struct-title">⚔️ Tactical Analysis</span>
+                        <span class='struct-badge' style='background:#95a5a6'>IGNORE : 💤 EARLY</span>
+                    </div>
+                    <div class='trigger-msg'>💡 아직 이격도가 큼. 관망 필요.</div>
+                    <div class="struct-metrics">
+                        <div class="s-item">
+                            <span class="lbl">Base A</span>
+                            <span class="val">$27.92</span>
+                        </div>
+                        <div class="s-arrow">➔</div>
+                        <div class="s-item">
+                            <span class="lbl">Pivot (High)</span>
+                            <span class="val">$36.24</span>
+                        </div>
+                        <div class="s-arrow">➔</div>
+                        <div class="s-item">
+                            <span class="lbl">Base B</span>
+                            <span class="val">$32.62</span>
+                        </div>
+                    </div>
+                    <div class="struct-footer">
+                        <span>Gap to Breakout: <strong>10.0%</strong> (Score: 60)</span>
+                    </div>
+                </div>
+                
+                    <div class="news-section">
+                        <h4>📰 최신 뉴스 & AI 태그</h4>
+                        <div class="news-list"><div class='news-item'><span class='date'>2026.01.17</span><div class='tags-row'><span class='news-tag' style='background:#e67e22;'>📉 실적/이벤트</span></div><a href='https://news.google.com/rss/articles/CBMimwFBVV95cUxQU2hRMTA1OVMxY3dlQnp2MFF3REU1MXQwYXB6Nnh5RnV5WS1MSy1taWtZZzUwU1c4SXdCNVdDVjhpaDJYUzNITFVyb3g2TlI2Z0lyQ1R6NHVGdWtRQlVVMmNEbjM1N1R2ZmNfbVVpMXJieTU0Y25odTlNTUhvbF9OQ3lEeHhuYllTa3puMzdGcXpTUnctUG96WFpqRQ?oc=5' target='_blank'>DraftKings(DKNG) 주식: 와일드 카드 베팅 수익이 40% 감소한 후 8% 하락</a></div><div class='news-item'><span class='date'>2026.01.16</span><div class='tags-row'><span class='news-tag' style='background:#e67e22;'>📉 실적/이벤트</span></div><a href='https://news.google.com/rss/articles/CBMixAFBVV95cUxOSFVnMW4yelpXNV9taGRFVnE5YTkzQlhmeGJLWlVTU29ZSmU4QmdORVRSZEQzbXI0UlRXR3E5bmtDSWxkZHR2WlVNNy1aT1lEdUxtOVFqdkp3eXZ4UWVIbkJyazBSTm5zTWZsVTJiT0NjVTZPOFJHU0M4ajNZS29LbFRyU21NNEJ0YjhQUDR6RjNLTmlxeFJUM213anBaR1Fkem11Z0VOS3ctTUxTYVpYdE9teE5zWUtoSmZtUUh5a2hpcExQ?oc=5' target='_blank'>NFL Wild Card 베팅 수익 감소로 DraftKings 주가 하락</a></div></div>
+                    </div>
+                    
+                <div class="timemachine-box">
+                    <div class="tm-item crash">
+                        <span class="tm-label">🔴 Crash (A)</span>
+                        <a href="https://www.google.com/search?q=DKNG+stock+news&tbs=cdr:1,cd_min:11/03/2025,cd_max:11/07/2025&tbm=nws" target="_blank" class="tm-btn">뉴스 ➜</a>
+                    </div>
+                    <div class="tm-item rebound">
+                        <span class="tm-label">🟢 Confirm (B)</span>
+                        <a href="https://www.google.com/search?q=DKNG+stock+news&tbs=cdr:1,cd_min:01/14/2026,cd_max:01/18/2026&tbm=nws" target="_blank" class="tm-btn">뉴스 ➜</a>
+                    </div>
+                </div>
+                
+                </div>
+                <div class="chart-section">
+                    <div class="tradingview-widget-container" style="height:100%;width:100%">
+                        <div id="tv_DKNG" style="height:100%;width:100%"></div>
+                        <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+                        <script type="text/javascript">
+                        new TradingView.widget({
+                            "autosize": true, "symbol": "DKNG", "interval": "D", "timezone": "Etc/UTC",
+                            "theme": "dark", "style": "1", "locale": "kr", "toolbar_bg": "#1e222d",
+                            "enable_publishing": false, "hide_side_toolbar": false,
+                            "container_id": "tv_DKNG"
+                        });
+                        </script>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        </div>
+    </body>
+    </html>
+    
