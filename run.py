@@ -31,7 +31,7 @@ except ImportError:
     from deep_translator import GoogleTranslator
 
 # ==========================================
-# 2. V7 PATCH - 핵심 모듈 함수 (GPT Logic Applied)
+# 2. V7 PATCH - 핵심 모듈 함수
 # ==========================================
 
 ### V7 PATCH: Hard Cut (기초 체력 필터)
@@ -70,7 +70,7 @@ def calc_atr_and_tier(hist):
     atr = tr.rolling(20).mean().iloc[-1]
     cur_price = close.iloc[-1]
     
-    if cur_price == 0: return 3, -35, 0 # 에러 방지
+    if cur_price == 0: return 3, -35, 0, "Error" # 에러 방지
 
     vol_ratio = atr / cur_price
 
@@ -260,7 +260,7 @@ def get_google_news_rss_optimized(symbol):
     return []
 
 # ==========================================
-# 5. 시각화 (대시보드 생성)
+# 5. 시각화 (대시보드 생성) - No Target 대응
 # ==========================================
 def generate_dashboard(targets):
     html_cards = ""
@@ -269,37 +269,42 @@ def generate_dashboard(targets):
         sym = stock['symbol']
         chart_id = f"tv_{sym}"
         
-        news_data = get_google_news_rss_optimized(sym)
-        
-        news_html = ""
-        if news_data:
-            for n in news_data:
-                news_html += f"""
-                <div class='news-item'>
-                    <span class='date'>{n['date_str']}</span>
-                    <a href='{n['link']}' target='_blank' title='[원문] {n['title_en']}'>
-                        {n['title_ko']}
-                    </a>
-                </div>
-                """
+        # 더미 데이터일 경우 뉴스 생략
+        if sym == "NO-TARGETS":
+            news_html = "<p class='no-news'>검색 조건을 만족하는 종목이 없습니다.</p>"
+            news_footer = ""
         else:
-            news_html = "<p class='no-news'>관련 주요 뉴스가 없습니다.</p>"
+            news_data = get_google_news_rss_optimized(sym)
+            news_html = ""
+            if news_data:
+                for n in news_data:
+                    news_html += f"""
+                    <div class='news-item'>
+                        <span class='date'>{n['date_str']}</span>
+                        <a href='{n['link']}' target='_blank' title='[원문] {n['title_en']}'>
+                            {n['title_ko']}
+                        </a>
+                    </div>
+                    """
+            else:
+                news_html = "<p class='no-news'>관련 주요 뉴스가 없습니다.</p>"
 
-        google_search_url = f"https://www.google.com/search?q={sym}+주식+뉴스&tbm=nws"
-        news_footer = f"""
-        <div class="news-footer">
-            <a href="{google_search_url}" target="_blank" class="google-btn">
-                구글 뉴스 더보기 ➜
-            </a>
-        </div>
-        """
+            google_search_url = f"https://www.google.com/search?q={sym}+주식+뉴스&tbm=nws"
+            news_footer = f"""
+            <div class="news-footer">
+                <a href="{google_search_url}" target="_blank" class="google-btn">
+                    구글 뉴스 더보기 ➜
+                </a>
+            </div>
+            """
 
-        # V7 정보 표시 (Tier, Radar Msg)
-        tier_label = stock.get('tier_label', 'Tier ?')
-        radar_msg = stock.get('radar_msg', 'Detected')
+        # V7 정보 표시
+        tier_label = stock.get('tier_label', '')
+        radar_msg = stock.get('radar_msg', '')
         
-        tier_badge = f"<span class='badge' style='background:#2c3e50; color:#ecf0f1;'>{tier_label}</span>"
-        radar_badge = f"<span class='badge' style='background:rgba(242, 54, 69, 0.15); color:#f23645;'>{radar_msg}</span>"
+        # 뱃지 스타일
+        tier_badge = f"<span class='badge' style='background:#2c3e50; color:#ecf0f1;'>{tier_label}</span>" if tier_label else ""
+        radar_badge = f"<span class='badge' style='background:rgba(242, 54, 69, 0.15); color:#f23645;'>{radar_msg}</span>" if radar_msg else ""
 
         html_cards += f"""
         <div class="card">
@@ -390,11 +395,31 @@ def generate_dashboard(targets):
     with open("data/artifacts/dashboard/index.html", "w", encoding="utf-8") as f:
         f.write(full_html)
 
+# ==========================================
+# 6. 메인 실행부 (No Target Fix Applied)
+# ==========================================
 if __name__ == "__main__":
+    # 1. 로직 실행
     targets = run_logic()
     
-    if targets:
-        generate_dashboard(targets)
-        print("✅ 작전 완료. 대시보드(index.html)가 생성되었습니다.")
-    else:
-        print("\n⚠️ 탐지된 종목이 없습니다.")
+    # 2. 결과가 0개일 경우, 더미 데이터 생성 (보고서 생성 강제)
+    if not targets:
+        print("\n⚠️ 레이더 탐지 결과가 0개입니다.")
+        print("💡 '결과 없음' 보고서를 생성합니다.")
+        
+        targets = [{
+            "symbol": "NO-TARGETS", 
+            "price": 0.00, 
+            "dd": 0.00, 
+            "name": "탐지된 종목이 없습니다 (조건 미달)", 
+            "tier_label": "System Info", 
+            "radar_msg": "Try adjusting universe"
+        }]
+    
+    # 3. 대시보드 생성 (무조건 실행됨)
+    generate_dashboard(targets)
+    
+    # 4. 파일 위치 안내
+    abs_path = os.path.abspath('data/artifacts/dashboard/index.html')
+    print("\n✅ 작전 완료. 아래 경로의 파일을 여십시오:")
+    print(f"👉 {abs_path}")
