@@ -31,17 +31,109 @@ except ImportError:
 ETF_LIST = ["TQQQ", "SQQQ", "SOXL", "SOXS", "TSLL", "NVDL", "LABU", "LABD"]
 
 # ==========================================
-# 2. V8.0 핵심: 뉴스 구조 분석 엔진 (Structural Analyzer)
+# 2. V8.5 핵심: 재점화 구조 엔진 (Re-Ignition Engine)
+# ==========================================
+def analyze_reignition_structure(hist):
+    """
+    [Safety Locks Applied]
+    1. Base A: 최근 120일 최저점
+    2. Pivot: Base A 이후 형성된 최고점 (구조적 저항)
+    3. Base B: Pivot 이후 형성된 최저점 (Higher Low 확인)
+    4. Status: Pivot과의 거리 기반 분류
+    """
+    try:
+        if len(hist) < 120: return None
+        
+        # 데이터 슬라이싱 (최근 120일)
+        recent = hist.tail(120).copy()
+        current_price = recent["Close"].iloc[-1]
+        
+        # 1. Base A 탐지 (The Crash Bottom)
+        base_a_idx = recent["Close"].idxmin()
+        base_a_price = recent.loc[base_a_idx]["Close"]
+        base_a_date = base_a_idx.strftime("%Y-%m-%d")
+        
+        # [Lock A] Pivot 탐지 (Base A 이후의 고점)
+        # Base A 이후 데이터가 충분하지 않으면 구조 형성 불가
+        post_base_a = recent.loc[base_a_idx:]
+        if len(post_base_a) < 5: # 최소 5일은 지나야 반등 인정
+            return {"status": "FORMING_A", "score": 0}
+
+        pivot_idx = post_base_a["Close"].idxmax()
+        pivot_price = post_base_a.loc[pivot_idx]["Close"]
+        pivot_date = pivot_idx.strftime("%Y-%m-%d")
+        
+        # Pivot이 Base A와 같은 날이면 반등 없음
+        if pivot_date == base_a_date:
+             return {"status": "BOUNCING", "score": 10}
+
+        # 2. Base B 탐지 (The Higher Low)
+        # Pivot 이후 데이터 확인
+        post_pivot = post_base_a.loc[pivot_idx:]
+        if len(post_pivot) < 3: # Pivot 찍고 며칠 안 지남
+             return {"status": "AT_PIVOT", "score": 20}
+
+        base_b_idx = post_pivot["Close"].idxmin()
+        base_b_price = post_pivot.loc[base_b_idx]["Close"]
+        base_b_date = base_b_idx.strftime("%Y-%m-%d")
+
+        # [Lock B] 안전장치: 구조 무효화 조건
+        # 1) Base B가 Base A보다 낮으면 (저점 갱신) -> 하락 추세 지속
+        if base_b_price < base_a_price:
+            return {"status": "INVALID (Low Broken)", "score": 0}
+        
+        # 2) 현재가가 Base B보다 낮으면 (2차 바닥 붕괴 중) -> 진입 금지
+        if current_price < base_b_price:
+            return {"status": "INVALID (B Broken)", "score": 0}
+
+        # [Lock C] 상태 분류 (Distance to Pivot)
+        # 돌파 거리 계산 (%)
+        if pivot_price == 0: dist_pct = 0
+        else: dist_pct = (pivot_price - current_price) / pivot_price * 100
+        
+        status = ""
+        badge_color = ""
+        score = 50 # 기본 점수 (구조 형성됨)
+
+        # Higher Low 보너스 점수
+        if base_b_price > base_a_price * 1.05: score += 10 # 5% 이상 높은 저점
+
+        if current_price > pivot_price:
+            status = "🔥 BREAKOUT"
+            badge_color = "#e74c3c" # Red/Orange
+            score += 40
+        elif dist_pct <= 3.0:
+            status = "🚀 READY"
+            badge_color = "#e67e22" # Orange
+            score += 30
+        elif dist_pct <= 8.0:
+            status = "👀 WATCH"
+            badge_color = "#f1c40f" # Yellow
+            score += 10
+        else:
+            status = "💤 EARLY"
+            badge_color = "#95a5a6" # Grey
+
+        return {
+            "base_a": base_a_price, "base_a_date": base_a_date,
+            "pivot": pivot_price, "pivot_date": pivot_date,
+            "base_b": base_b_price, "base_b_date": base_b_date,
+            "distance": dist_pct,
+            "status": status,
+            "badge_color": badge_color,
+            "score": score
+        }
+
+    except Exception as e:
+        return None
+
+# ==========================================
+# 3. 뉴스 구조 분석 엔진 (V8.0 유지)
 # ==========================================
 def analyze_news_structure(title_en):
-    """
-    뉴스의 제목을 분석하여 구조적 태그를 추출하는 자체 엔진
-    (유료 API 없이 키워드 패턴 매칭으로 구현)
-    """
     title_lower = title_en.lower()
     tags = []
     
-    # 1. [리스크 성격] 구조적 vs 일회성
     structural_keywords = ['lawsuit', 'sec', 'probe', 'investigation', 'ban', 'fraud', 'scandal', 'breach', 'recall', 'ceo resign']
     oneoff_keywords = ['earnings', 'revenue', 'miss', 'estimate', 'downgrade', 'guidance', 'profit', 'weather']
     
@@ -52,44 +144,26 @@ def analyze_news_structure(title_en):
     elif is_oneoff: tags.append(("📉 실적/이벤트", "event"))
     else: tags.append(("⚖️ 일반 변동", "normal"))
     
-    # 2. [규제/정부] 리스크 여부
     reg_keywords = ['fda', 'ftc', 'doj', 'biden', 'trump', 'regulation', 'antitrust', 'policy', 'tax']
-    if any(k in title_lower for k in reg_keywords):
-        tags.append(("🏛️ 규제/정책 이슈", "gov"))
+    if any(k in title_lower for k in reg_keywords): tags.append(("🏛️ 규제/정책", "gov"))
         
-    # 3. [시장/매크로] 외부 요인 여부
     macro_keywords = ['fed', 'rate', 'inflation', 'cpi', 'jobs', 'sector', 'competitor', 'war', 'oil']
-    if any(k in title_lower for k in macro_keywords):
-        tags.append(("🌍 시장/매크로", "macro"))
+    if any(k in title_lower for k in macro_keywords): tags.append(("🌍 시장/매크로", "macro"))
 
-    # 4. [불확실성] 확정 vs 미정
     pending_keywords = ['may', 'could', 'potential', 'consider', 'talks', 'rumor', 'reportedly']
-    if any(k in title_lower for k in pending_keywords):
-        tags.append(("❓ 불확실/미확정", "pending"))
+    if any(k in title_lower for k in pending_keywords): tags.append(("❓ 불확실/미확정", "pending"))
         
     return tags
 
 # ==========================================
-# 3. 기존 분석 로직 (V7.5 유지)
+# 4. 기존 필터링 및 메인 로직
 # ==========================================
-def detect_phase_dates(hist):
-    try:
-        if len(hist) < 60: return None, None
-        hist['Daily_Change'] = hist['Close'].pct_change()
-        recent = hist.tail(120)
-        crash_date_idx = recent['Daily_Change'].idxmin()
-        crash_date = crash_date_idx.strftime("%Y-%m-%d")
-        latest_20 = hist.tail(20)
-        rebound_date_idx = latest_20['Close'].idxmin()
-        rebound_date = rebound_date_idx.strftime("%Y-%m-%d")
-        return crash_date, rebound_date
-    except: return None, None
-
 def check_hard_cut(ticker, hist):
     try:
         try: market_cap = ticker.fast_info['market_cap']
         except: market_cap = ticker.info.get("marketCap", 0) or 0
         avg_dollar_vol = (hist["Close"] * hist["Volume"]).rolling(20).mean().iloc[-1]
+        
         if market_cap < 2_000_000_000: return False, "Small Cap"
         if avg_dollar_vol < 20_000_000: return False, "Low Liquidity"
         return True, "Pass"
@@ -103,8 +177,10 @@ def calc_atr_and_tier(hist):
     tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
     atr = tr.rolling(20).mean().iloc[-1]
     cur_price = close.iloc[-1]
+    
     if cur_price == 0: return 3, -35, 0, "Error"
     vol_ratio = atr / cur_price
+
     if vol_ratio < 0.025: return 1, -15, round(vol_ratio * 100, 2), "Tier 1 (Safe)"
     elif vol_ratio < 0.05: return 2, -25, round(vol_ratio * 100, 2), "Tier 2 (Growth)"
     else: return 3, -35, round(vol_ratio * 100, 2), "Tier 3 (Volatile)"
@@ -118,13 +194,14 @@ def check_event_radar(hist):
         cur_close = hist["Close"].iloc[-1]
         price_change_pct = abs((cur_close - prev_close) / prev_close) * 100
         gap_pct = abs((hist["Open"].iloc[-1] - prev_close) / prev_close) * 100
+
         if vol_ratio >= 2.5 and (price_change_pct >= 4.0 or gap_pct >= 2.0):
             return True, round(vol_ratio, 2), round(price_change_pct, 2)
         return False, round(vol_ratio, 2), round(price_change_pct, 2)
     except: return False, 0, 0
 
 def run_logic():
-    print("🧠 [Brain] Hybrid Sniper V8.0 (Structural Analyzer) 가동...")
+    print("🧠 [Brain] Hybrid Sniper V8.5 (Re-Ignition Display) 가동...")
     
     universe = [
         "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NFLX", "TSLA", "NVDA", "AMD", "AVGO",
@@ -169,7 +246,8 @@ def run_logic():
                 stats["NoEvent"] += 1
                 continue
             
-            crash_date, rebound_date = detect_phase_dates(hist)
+            # [V8.5] Re-Ignition 구조 분석 실행 (필터링 X, 데이터 수집 O)
+            reignition_data = analyze_reignition_structure(hist)
 
             stats["Pass"] += 1
             is_etf = sym in ETF_LIST
@@ -184,8 +262,7 @@ def run_logic():
                 "tier_label": final_label,
                 "radar_msg": f"Vol {vol_spike}x / Move {move_pct}%",
                 "name": t.info.get("shortName", sym),
-                "crash_date": crash_date,
-                "rebound_date": rebound_date
+                "reignition": reignition_data # 구조 데이터 포함
             })
 
         except Exception as e:
@@ -205,7 +282,7 @@ def run_logic():
     return survivors
 
 # ==========================================
-# 4. 뉴스 엔진 (구조 분석 태그 추가)
+# 5. 뉴스 엔진 (V8.0 유지)
 # ==========================================
 def calculate_relevance_score(title_en):
     score = 0
@@ -228,21 +305,10 @@ def get_google_news_rss_optimized(symbol):
                 pubDate = item.find('pubDate').text
                 try: date_str = datetime.strptime(pubDate[:16], "%a, %d %b %Y").strftime("%Y.%m.%d")
                 except: date_str = ""
-                
-                # [V8.0] 구조 분석 실행
                 tags = analyze_news_structure(title)
-                
-                raw_news.append({
-                    "title_en": title, 
-                    "link": item.find('link').text, 
-                    "date_str": date_str, 
-                    "score": calculate_relevance_score(title),
-                    "tags": tags # 분석된 태그 저장
-                })
-            
+                raw_news.append({"title_en": title, "link": item.find('link').text, "date_str": date_str, "score": calculate_relevance_score(title), "tags": tags})
             raw_news.sort(key=lambda x: x['score'], reverse=True)
             top_news = raw_news[:2]
-            
             translator = GoogleTranslator(source='auto', target='ko')
             for item in top_news:
                 try: item['title_ko'] = translator.translate(item['title_en'])
@@ -252,7 +318,7 @@ def get_google_news_rss_optimized(symbol):
     return []
 
 # ==========================================
-# 5. 시각화 (구조 분석 패널 추가)
+# 6. 시각화 (V8.5 Re-Ignition 패널 추가)
 # ==========================================
 def generate_dashboard(targets):
     html_cards = ""
@@ -260,7 +326,89 @@ def generate_dashboard(targets):
     for stock in targets:
         sym = stock['symbol']
         chart_id = f"tv_{sym}"
+        reig = stock.get("reignition")
         
+        # [V8.5] 재점화 구조 패널 생성
+        structure_html = ""
+        tm_html = "" # 타임머신 링크
+        
+        if reig and isinstance(reig, dict) and "status" in reig:
+            # 상태 배지
+            status_badge = f"<span class='struct-badge' style='background:{reig.get('badge_color', '#95a5a6')}'>{reig.get('status')}</span>"
+            
+            # 가격 정보 (A -> Pivot -> B)
+            base_a = reig.get('base_a', 0)
+            pivot = reig.get('pivot', 0)
+            base_b = reig.get('base_b', 0)
+            
+            # 구조 데이터가 유효할 때만 상세 표시
+            if "INVALID" not in reig.get('status', 'INVALID'):
+                structure_html = f"""
+                <div class="structure-box">
+                    <div class="struct-header">
+                        <span class="struct-title">📐 Re-Ignition Structure</span>
+                        {status_badge}
+                    </div>
+                    <div class="struct-metrics">
+                        <div class="s-item">
+                            <span class="lbl">Base A</span>
+                            <span class="val">${base_a:.2f}</span>
+                            <span class="date">{reig.get('base_a_date','')}</span>
+                        </div>
+                        <div class="s-arrow">➔</div>
+                        <div class="s-item">
+                            <span class="lbl">Pivot (High)</span>
+                            <span class="val">${pivot:.2f}</span>
+                            <span class="date">{reig.get('pivot_date','')}</span>
+                        </div>
+                        <div class="s-arrow">➔</div>
+                        <div class="s-item">
+                            <span class="lbl">Base B</span>
+                            <span class="val">${base_b:.2f}</span>
+                            <span class="date">{reig.get('base_b_date','')}</span>
+                        </div>
+                    </div>
+                    <div class="struct-footer">
+                        <span>Gap to Breakout: <strong>{reig.get('distance', 0):.1f}%</strong></span>
+                    </div>
+                </div>
+                """
+                
+                # 타임머신 링크 (유효 구조일 때만 생성)
+                def make_google_url(query, date_str):
+                    try:
+                        dt = datetime.strptime(date_str, "%Y-%m-%d")
+                        start = (dt - timedelta(days=2)).strftime("%m/%d/%Y")
+                        end = (dt + timedelta(days=2)).strftime("%m/%d/%Y")
+                        return f"https://www.google.com/search?q={sym}+stock+news&tbs=cdr:1,cd_min:{start},cd_max:{end}&tbm=nws"
+                    except: return "#"
+                
+                crash_url = make_google_url(sym, reig.get('base_a_date', ''))
+                rebound_url = make_google_url(sym, reig.get('base_b_date', '')) # Base B 시점으로 변경 (확인 사살)
+                
+                tm_html = f"""
+                <div class="timemachine-box">
+                    <div class="tm-item crash">
+                        <span class="tm-label">🔴 1차 바닥 (Crash)</span>
+                        <a href="{crash_url}" target="_blank" class="tm-btn">뉴스 확인 ➜</a>
+                    </div>
+                    <div class="tm-item rebound">
+                        <span class="tm-label">🟢 2차 눌림 (Confirm)</span>
+                        <a href="{rebound_url}" target="_blank" class="tm-btn">뉴스 확인 ➜</a>
+                    </div>
+                </div>
+                """
+            else:
+                structure_html = f"""
+                <div class="structure-box invalid">
+                    <div class="struct-header">
+                        <span class="struct-title">⚠️ 구조 미형성</span>
+                        <span class="struct-badge" style="background:#7f8c8d">{reig.get('status')}</span>
+                    </div>
+                </div>
+                """
+
+        # 뉴스 섹션
         if sym == "NO-TARGETS":
             news_html = "<p class='no-news'>탐지된 종목이 없습니다.</p>"
         else:
@@ -268,64 +416,22 @@ def generate_dashboard(targets):
             news_html = ""
             if news_data:
                 for n in news_data:
-                    # 태그 렌더링
                     tags_html = ""
                     for tag_text, tag_type in n['tags']:
-                        # 색상 코딩
-                        color = "#7f8c8d" # default gray
-                        if tag_type == "risk": color = "#c0392b" # red
-                        elif tag_type == "event": color = "#e67e22" # orange
-                        elif tag_type == "gov": color = "#8e44ad" # purple
-                        elif tag_type == "macro": color = "#2980b9" # blue
-                        
+                        color = "#7f8c8d"
+                        if tag_type == "risk": color = "#c0392b"
+                        elif tag_type == "event": color = "#e67e22"
+                        elif tag_type == "gov": color = "#8e44ad"
+                        elif tag_type == "macro": color = "#2980b9"
                         tags_html += f"<span class='news-tag' style='background:{color};'>{tag_text}</span>"
-                    
-                    news_html += f"""
-                    <div class='news-item'>
-                        <span class='date'>{n['date_str']}</span>
-                        <div class='tags-row'>{tags_html}</div>
-                        <a href='{n['link']}' target='_blank'>{n['title_ko']}</a>
-                    </div>
-                    """
+                    news_html += f"<div class='news-item'><span class='date'>{n['date_str']}</span><div class='tags-row'>{tags_html}</div><a href='{n['link']}' target='_blank'>{n['title_ko']}</a></div>"
             else:
                 news_html = "<p class='no-news'>최근 주요 뉴스가 없습니다.</p>"
-
-        # 타임머신 링크
-        crash_date = stock.get('crash_date', '')
-        rebound_date = stock.get('rebound_date', '')
-        tm_html = ""
-        if crash_date and rebound_date:
-            def make_google_url(query, date_str):
-                try:
-                    dt = datetime.strptime(date_str, "%Y-%m-%d")
-                    start = (dt - timedelta(days=2)).strftime("%m/%d/%Y")
-                    end = (dt + timedelta(days=2)).strftime("%m/%d/%Y")
-                    return f"https://www.google.com/search?q={sym}+stock+news&tbs=cdr:1,cd_min:{start},cd_max:{end}&tbm=nws"
-                except: return "#"
-
-            crash_url = make_google_url(sym, crash_date)
-            rebound_url = make_google_url(sym, rebound_date)
-
-            tm_html = f"""
-            <div class="timemachine-box">
-                <div class="tm-item crash">
-                    <span class="tm-label">🔴 폭락 원인 (D-Day)</span>
-                    <span class="tm-date">{crash_date}</span>
-                    <a href="{crash_url}" target="_blank" class="tm-btn">조회 ➜</a>
-                </div>
-                <div class="tm-item rebound">
-                    <span class="tm-label">🟢 반등 시도 (Rebound)</span>
-                    <span class="tm-date">{rebound_date}</span>
-                    <a href="{rebound_url}" target="_blank" class="tm-btn">조회 ➜</a>
-                </div>
-            </div>
-            """
 
         tier_label = stock.get('tier_label', '')
         radar_msg = stock.get('radar_msg', '')
         is_etf = "[ETF]" in tier_label
         badge_bg = "#8e44ad" if is_etf else "#2c3e50"
-        
         tier_badge = f"<span class='badge' style='background:{badge_bg}; color:#ecf0f1;'>{tier_label}</span>" if tier_label else ""
         radar_badge = f"<span class='badge' style='background:rgba(242, 54, 69, 0.15); color:#f23645;'>{radar_msg}</span>" if radar_msg else ""
 
@@ -344,8 +450,9 @@ def generate_dashboard(targets):
             </div>
             <div class="card-body">
                 <div class="left-section">
+                    {structure_html}
                     <div class="news-section">
-                        <h4>🧠 AI 구조 분석 (Live)</h4>
+                        <h4>📰 최근 뉴스 & AI 태그</h4>
                         <div class="news-list">{news_html}</div>
                     </div>
                     {tm_html}
@@ -373,7 +480,7 @@ def generate_dashboard(targets):
     <html>
     <head>
         <meta charset="utf-8">
-        <title>Hybrid Sniper V8.0 (Structure)</title>
+        <title>Hybrid Sniper V8.5 (Re-Ignition)</title>
         <style>
             :root {{
                 --bg-color: #131722; --card-bg: #1e222d; --text-main: #d1d4dc;
@@ -390,26 +497,39 @@ def generate_dashboard(targets):
             .price {{ font-size: 1.5em; font-weight: 600; color: #fff; margin-right: 15px; }}
             .badge {{ padding: 5px 10px; border-radius: 4px; font-weight: bold; font-size: 0.8em; margin-left: 5px; border: 1px solid #444; }}
             
-            .card-body {{ display: flex; flex-wrap: wrap; height: 500px; }}
-            .left-section {{ flex: 1; min-width: 320px; padding: 20px; border-right: 1px solid var(--border-color); display: flex; flex-direction: column; }}
+            .card-body {{ display: flex; flex-wrap: wrap; height: 600px; }}
+            .left-section {{ flex: 1; min-width: 350px; padding: 20px; border-right: 1px solid var(--border-color); display: flex; flex-direction: column; }}
             
-            .news-section {{ flex-grow: 1; overflow-y: auto; margin-bottom: 20px; }}
-            .news-item {{ margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #2a2e39; }}
-            .tags-row {{ margin-bottom: 6px; }}
+            /* Re-Ignition Structure Box */
+            .structure-box {{ background: #262b3e; border-radius: 6px; padding: 15px; margin-bottom: 15px; border: 1px solid #363c4e; }}
+            .structure-box.invalid {{ opacity: 0.6; }}
+            .struct-header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }}
+            .struct-title {{ font-size: 0.9em; font-weight: bold; color: #fff; }}
+            .struct-badge {{ padding: 3px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; color: #fff; }}
+            .struct-metrics {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 0.8em; }}
+            .s-item {{ display: flex; flex-direction: column; align-items: center; }}
+            .s-arrow {{ color: var(--text-sub); font-size: 1.2em; }}
+            .s-item .lbl {{ color: var(--text-sub); margin-bottom: 2px; font-size: 0.8em; }}
+            .s-item .val {{ color: #fff; font-weight: bold; }}
+            .s-item .date {{ color: var(--text-sub); font-size: 0.7em; }}
+            .struct-footer {{ text-align: center; border-top: 1px solid #363c4e; padding-top: 8px; font-size: 0.85em; color: var(--text-main); }}
+
+            .news-section {{ flex-grow: 1; overflow-y: auto; margin-bottom: 15px; }}
+            .news-item {{ margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #2a2e39; }}
+            .tags-row {{ margin-bottom: 5px; }}
             .news-tag {{ font-size: 0.7em; color: #fff; padding: 2px 6px; border-radius: 3px; margin-right: 5px; display: inline-block; font-weight: bold; }}
-            .news-item a {{ color: var(--text-main); text-decoration: none; font-size: 0.95em; display: block; line-height: 1.4; }}
+            .news-item a {{ color: var(--text-main); text-decoration: none; font-size: 0.9em; display: block; line-height: 1.4; }}
             .news-item a:hover {{ color: var(--accent-blue); }}
-            .date {{ font-size: 0.75em; color: var(--text-sub); display: block; margin-bottom: 4px; }}
+            .date {{ font-size: 0.75em; color: var(--text-sub); display: block; margin-bottom: 2px; }}
             .no-news {{ color: var(--text-sub); font-style: italic; font-size: 0.9em; }}
 
             /* 타임머신 스타일 */
-            .timemachine-box {{ border-top: 1px solid var(--border-color); padding-top: 15px; }}
-            .tm-item {{ display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; padding: 8px; border-radius: 6px; }}
+            .timemachine-box {{ border-top: 1px solid var(--border-color); padding-top: 10px; display: flex; gap: 10px; }}
+            .tm-item {{ flex: 1; display: flex; flex-direction: column; align-items: center; padding: 8px; border-radius: 6px; }}
             .tm-item.crash {{ background: rgba(242, 54, 69, 0.1); border: 1px solid rgba(242, 54, 69, 0.3); }}
             .tm-item.rebound {{ background: rgba(38, 166, 154, 0.1); border: 1px solid rgba(38, 166, 154, 0.3); }}
-            .tm-label {{ font-size: 0.8em; font-weight: bold; }}
-            .tm-date {{ font-size: 0.85em; color: #fff; }}
-            .tm-btn {{ background: #2a2e39; color: var(--text-main); padding: 4px 10px; border-radius: 4px; text-decoration: none; font-size: 0.75em; }}
+            .tm-label {{ font-size: 0.75em; font-weight: bold; margin-bottom: 4px; }}
+            .tm-btn {{ background: #2a2e39; color: var(--text-main); padding: 4px 10px; border-radius: 4px; text-decoration: none; font-size: 0.75em; width: 80%; text-align: center; }}
             .tm-btn:hover {{ background: #fff; color: #000; }}
 
             .chart-section {{ flex: 2; min-width: 400px; height: 100%; }}
@@ -418,7 +538,7 @@ def generate_dashboard(targets):
     </head>
     <body>
         <div class="container">
-            <h1>SNIPER V8.0 <span style="font-size:0.5em; color:#e67e22;">STRUCTURAL</span></h1>
+            <h1>SNIPER V8.5 <span style="font-size:0.5em; color:#e67e22;">RE-IGNITION</span></h1>
             {html_cards}
         </div>
     </body>
@@ -435,4 +555,4 @@ if __name__ == "__main__":
         print("💡 결과가 0개입니다. 더미 리포트를 생성합니다.")
         targets = [{"symbol": "NO-TARGETS", "price": 0.00, "dd": 0.00, "name": "탐지된 종목이 없습니다", "tier_label": "System Info", "radar_msg": "Universe scanned"}]
     generate_dashboard(targets)
-    print(f"\n✅ V8.0 작전 완료.")
+    print(f"\n✅ V8.5 작전 완료.")
