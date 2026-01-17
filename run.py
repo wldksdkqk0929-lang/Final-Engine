@@ -31,43 +31,65 @@ except ImportError:
 ETF_LIST = ["TQQQ", "SQQQ", "SOXL", "SOXS", "TSLL", "NVDL", "LABU", "LABD"]
 
 # ==========================================
-# 2. V7.5 핵심 모듈 (타임머신 로직 추가)
+# 2. V8.0 핵심: 뉴스 구조 분석 엔진 (Structural Analyzer)
 # ==========================================
+def analyze_news_structure(title_en):
+    """
+    뉴스의 제목을 분석하여 구조적 태그를 추출하는 자체 엔진
+    (유료 API 없이 키워드 패턴 매칭으로 구현)
+    """
+    title_lower = title_en.lower()
+    tags = []
+    
+    # 1. [리스크 성격] 구조적 vs 일회성
+    structural_keywords = ['lawsuit', 'sec', 'probe', 'investigation', 'ban', 'fraud', 'scandal', 'breach', 'recall', 'ceo resign']
+    oneoff_keywords = ['earnings', 'revenue', 'miss', 'estimate', 'downgrade', 'guidance', 'profit', 'weather']
+    
+    is_structural = any(k in title_lower for k in structural_keywords)
+    is_oneoff = any(k in title_lower for k in oneoff_keywords)
+    
+    if is_structural: tags.append(("🔴 구조적 리스크", "risk"))
+    elif is_oneoff: tags.append(("📉 실적/이벤트", "event"))
+    else: tags.append(("⚖️ 일반 변동", "normal"))
+    
+    # 2. [규제/정부] 리스크 여부
+    reg_keywords = ['fda', 'ftc', 'doj', 'biden', 'trump', 'regulation', 'antitrust', 'policy', 'tax']
+    if any(k in title_lower for k in reg_keywords):
+        tags.append(("🏛️ 규제/정책 이슈", "gov"))
+        
+    # 3. [시장/매크로] 외부 요인 여부
+    macro_keywords = ['fed', 'rate', 'inflation', 'cpi', 'jobs', 'sector', 'competitor', 'war', 'oil']
+    if any(k in title_lower for k in macro_keywords):
+        tags.append(("🌍 시장/매크로", "macro"))
 
-### [NEW] 타임머신 날짜 계산기
+    # 4. [불확실성] 확정 vs 미정
+    pending_keywords = ['may', 'could', 'potential', 'consider', 'talks', 'rumor', 'reportedly']
+    if any(k in title_lower for k in pending_keywords):
+        tags.append(("❓ 불확실/미확정", "pending"))
+        
+    return tags
+
+# ==========================================
+# 3. 기존 분석 로직 (V7.5 유지)
+# ==========================================
 def detect_phase_dates(hist):
     try:
-        # 데이터가 너무 적으면 계산 불가
         if len(hist) < 60: return None, None
-        
-        # 1. Phase A (Crash): 최근 6개월 중 가장 큰 낙폭(장대음봉)이 발생한 날
-        # (단순 하락률뿐만 아니라 거래량도 고려하면 좋으나, 일단 하락률 우선)
         hist['Daily_Change'] = hist['Close'].pct_change()
-        
-        # 최근 120일(약 6개월) 데이터만 대상
         recent = hist.tail(120)
-        
-        # 가장 큰 하락(최소값)이 발생한 날짜
         crash_date_idx = recent['Daily_Change'].idxmin()
         crash_date = crash_date_idx.strftime("%Y-%m-%d")
-        
-        # 2. Phase B (Rebound): 최근 20일 중 최저점을 찍은 날 (바닥)
-        # (바닥을 찍고 턴어라운드 하려는 시점이므로 최저점 날짜가 중요)
         latest_20 = hist.tail(20)
         rebound_date_idx = latest_20['Close'].idxmin()
         rebound_date = rebound_date_idx.strftime("%Y-%m-%d")
-        
         return crash_date, rebound_date
-        
-    except Exception as e:
-        return None, None
+    except: return None, None
 
 def check_hard_cut(ticker, hist):
     try:
         try: market_cap = ticker.fast_info['market_cap']
         except: market_cap = ticker.info.get("marketCap", 0) or 0
         avg_dollar_vol = (hist["Close"] * hist["Volume"]).rolling(20).mean().iloc[-1]
-        
         if market_cap < 2_000_000_000: return False, "Small Cap"
         if avg_dollar_vol < 20_000_000: return False, "Low Liquidity"
         return True, "Pass"
@@ -81,10 +103,8 @@ def calc_atr_and_tier(hist):
     tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
     atr = tr.rolling(20).mean().iloc[-1]
     cur_price = close.iloc[-1]
-    
     if cur_price == 0: return 3, -35, 0, "Error"
     vol_ratio = atr / cur_price
-
     if vol_ratio < 0.025: return 1, -15, round(vol_ratio * 100, 2), "Tier 1 (Safe)"
     elif vol_ratio < 0.05: return 2, -25, round(vol_ratio * 100, 2), "Tier 2 (Growth)"
     else: return 3, -35, round(vol_ratio * 100, 2), "Tier 3 (Volatile)"
@@ -98,17 +118,13 @@ def check_event_radar(hist):
         cur_close = hist["Close"].iloc[-1]
         price_change_pct = abs((cur_close - prev_close) / prev_close) * 100
         gap_pct = abs((hist["Open"].iloc[-1] - prev_close) / prev_close) * 100
-
         if vol_ratio >= 2.5 and (price_change_pct >= 4.0 or gap_pct >= 2.0):
             return True, round(vol_ratio, 2), round(price_change_pct, 2)
         return False, round(vol_ratio, 2), round(price_change_pct, 2)
     except: return False, 0, 0
 
-# ==========================================
-# 3. 메인 로직
-# ==========================================
 def run_logic():
-    print("🧠 [Brain] Hybrid Sniper V7.5 (TimeMachine) 가동...")
+    print("🧠 [Brain] Hybrid Sniper V8.0 (Structural Analyzer) 가동...")
     
     universe = [
         "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NFLX", "TSLA", "NVDA", "AMD", "AVGO",
@@ -153,7 +169,6 @@ def run_logic():
                 stats["NoEvent"] += 1
                 continue
             
-            # [NEW] 타임머신 날짜 계산
             crash_date, rebound_date = detect_phase_dates(hist)
 
             stats["Pass"] += 1
@@ -169,8 +184,8 @@ def run_logic():
                 "tier_label": final_label,
                 "radar_msg": f"Vol {vol_spike}x / Move {move_pct}%",
                 "name": t.info.get("shortName", sym),
-                "crash_date": crash_date,    # 폭락일
-                "rebound_date": rebound_date # 반등일
+                "crash_date": crash_date,
+                "rebound_date": rebound_date
             })
 
         except Exception as e:
@@ -190,7 +205,7 @@ def run_logic():
     return survivors
 
 # ==========================================
-# 4. 뉴스 엔진 (최신 뉴스만 자동)
+# 4. 뉴스 엔진 (구조 분석 태그 추가)
 # ==========================================
 def calculate_relevance_score(title_en):
     score = 0
@@ -204,19 +219,29 @@ def get_google_news_rss_optimized(symbol):
     raw_news = []
     try:
         url = f"https://news.google.com/rss/search?q={symbol}+stock&hl=en-US&gl=US&ceid=US:en"
-        resp = requests.get(url, timeout=5) # 타임아웃 단축
+        resp = requests.get(url, timeout=5)
         if resp.status_code == 200:
             root = ET.fromstring(resp.content)
-            for item in root.findall('./channel/item')[:5]: # 최대 5개만 파싱
+            for item in root.findall('./channel/item')[:5]:
                 title = item.find('title').text
                 if " - " in title: title = title.rsplit(" - ", 1)[0]
                 pubDate = item.find('pubDate').text
                 try: date_str = datetime.strptime(pubDate[:16], "%a, %d %b %Y").strftime("%Y.%m.%d")
                 except: date_str = ""
-                raw_news.append({"title_en": title, "link": item.find('link').text, "date_str": date_str, "score": calculate_relevance_score(title)})
+                
+                # [V8.0] 구조 분석 실행
+                tags = analyze_news_structure(title)
+                
+                raw_news.append({
+                    "title_en": title, 
+                    "link": item.find('link').text, 
+                    "date_str": date_str, 
+                    "score": calculate_relevance_score(title),
+                    "tags": tags # 분석된 태그 저장
+                })
             
             raw_news.sort(key=lambda x: x['score'], reverse=True)
-            top_news = raw_news[:2] # 상위 2개만 번역 (부하 방지)
+            top_news = raw_news[:2]
             
             translator = GoogleTranslator(source='auto', target='ko')
             for item in top_news:
@@ -227,7 +252,7 @@ def get_google_news_rss_optimized(symbol):
     return []
 
 # ==========================================
-# 5. 시각화 (타임머신 UI 적용)
+# 5. 시각화 (구조 분석 패널 추가)
 # ==========================================
 def generate_dashboard(targets):
     html_cards = ""
@@ -236,7 +261,6 @@ def generate_dashboard(targets):
         sym = stock['symbol']
         chart_id = f"tv_{sym}"
         
-        # 1. 최신 뉴스 (자동)
         if sym == "NO-TARGETS":
             news_html = "<p class='no-news'>탐지된 종목이 없습니다.</p>"
         else:
@@ -244,23 +268,36 @@ def generate_dashboard(targets):
             news_html = ""
             if news_data:
                 for n in news_data:
-                    news_html += f"<div class='news-item'><span class='date'>{n['date_str']}</span><a href='{n['link']}' target='_blank'>{n['title_ko']}</a></div>"
+                    # 태그 렌더링
+                    tags_html = ""
+                    for tag_text, tag_type in n['tags']:
+                        # 색상 코딩
+                        color = "#7f8c8d" # default gray
+                        if tag_type == "risk": color = "#c0392b" # red
+                        elif tag_type == "event": color = "#e67e22" # orange
+                        elif tag_type == "gov": color = "#8e44ad" # purple
+                        elif tag_type == "macro": color = "#2980b9" # blue
+                        
+                        tags_html += f"<span class='news-tag' style='background:{color};'>{tag_text}</span>"
+                    
+                    news_html += f"""
+                    <div class='news-item'>
+                        <span class='date'>{n['date_str']}</span>
+                        <div class='tags-row'>{tags_html}</div>
+                        <a href='{n['link']}' target='_blank'>{n['title_ko']}</a>
+                    </div>
+                    """
             else:
                 news_html = "<p class='no-news'>최근 주요 뉴스가 없습니다.</p>"
 
-        # 2. 타임머신 링크 생성 (구글 검색 URL 조합)
-        # 검색어 예시: "TSLA stock news" + 날짜 필터
+        # 타임머신 링크
         crash_date = stock.get('crash_date', '')
         rebound_date = stock.get('rebound_date', '')
-        
         tm_html = ""
         if crash_date and rebound_date:
-            # 구글 검색 날짜 필터 URL 생성 로직
-            # tbs=cdr:1,cd_min:MM/DD/YYYY,cd_max:MM/DD/YYYY
             def make_google_url(query, date_str):
                 try:
                     dt = datetime.strptime(date_str, "%Y-%m-%d")
-                    # 전후 3일 검색
                     start = (dt - timedelta(days=2)).strftime("%m/%d/%Y")
                     end = (dt + timedelta(days=2)).strftime("%m/%d/%Y")
                     return f"https://www.google.com/search?q={sym}+stock+news&tbs=cdr:1,cd_min:{start},cd_max:{end}&tbm=nws"
@@ -272,14 +309,14 @@ def generate_dashboard(targets):
             tm_html = f"""
             <div class="timemachine-box">
                 <div class="tm-item crash">
-                    <span class="tm-label">🔴 폭락 원인 확인</span>
+                    <span class="tm-label">🔴 폭락 원인 (D-Day)</span>
                     <span class="tm-date">{crash_date}</span>
-                    <a href="{crash_url}" target="_blank" class="tm-btn">뉴스 검색 ➜</a>
+                    <a href="{crash_url}" target="_blank" class="tm-btn">조회 ➜</a>
                 </div>
                 <div class="tm-item rebound">
-                    <span class="tm-label">🟢 반등/바닥 확인</span>
+                    <span class="tm-label">🟢 반등 시도 (Rebound)</span>
                     <span class="tm-date">{rebound_date}</span>
-                    <a href="{rebound_url}" target="_blank" class="tm-btn">뉴스 검색 ➜</a>
+                    <a href="{rebound_url}" target="_blank" class="tm-btn">조회 ➜</a>
                 </div>
             </div>
             """
@@ -308,7 +345,7 @@ def generate_dashboard(targets):
             <div class="card-body">
                 <div class="left-section">
                     <div class="news-section">
-                        <h4>📰 최신 뉴스 (Live)</h4>
+                        <h4>🧠 AI 구조 분석 (Live)</h4>
                         <div class="news-list">{news_html}</div>
                     </div>
                     {tm_html}
@@ -336,7 +373,7 @@ def generate_dashboard(targets):
     <html>
     <head>
         <meta charset="utf-8">
-        <title>Hybrid Sniper V7.5 (TimeMachine)</title>
+        <title>Hybrid Sniper V8.0 (Structure)</title>
         <style>
             :root {{
                 --bg-color: #131722; --card-bg: #1e222d; --text-main: #d1d4dc;
@@ -357,10 +394,12 @@ def generate_dashboard(targets):
             .left-section {{ flex: 1; min-width: 320px; padding: 20px; border-right: 1px solid var(--border-color); display: flex; flex-direction: column; }}
             
             .news-section {{ flex-grow: 1; overflow-y: auto; margin-bottom: 20px; }}
-            .news-item {{ margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #2a2e39; }}
-            .news-item a {{ color: var(--text-main); text-decoration: none; font-size: 0.9em; display: block; line-height: 1.4; }}
+            .news-item {{ margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #2a2e39; }}
+            .tags-row {{ margin-bottom: 6px; }}
+            .news-tag {{ font-size: 0.7em; color: #fff; padding: 2px 6px; border-radius: 3px; margin-right: 5px; display: inline-block; font-weight: bold; }}
+            .news-item a {{ color: var(--text-main); text-decoration: none; font-size: 0.95em; display: block; line-height: 1.4; }}
             .news-item a:hover {{ color: var(--accent-blue); }}
-            .date {{ font-size: 0.75em; color: var(--text-sub); display: block; margin-bottom: 2px; }}
+            .date {{ font-size: 0.75em; color: var(--text-sub); display: block; margin-bottom: 4px; }}
             .no-news {{ color: var(--text-sub); font-style: italic; font-size: 0.9em; }}
 
             /* 타임머신 스타일 */
@@ -379,7 +418,7 @@ def generate_dashboard(targets):
     </head>
     <body>
         <div class="container">
-            <h1>SNIPER V7.5 <span style="font-size:0.5em; color:#3498db;">TIMEMACHINE</span></h1>
+            <h1>SNIPER V8.0 <span style="font-size:0.5em; color:#e67e22;">STRUCTURAL</span></h1>
             {html_cards}
         </div>
     </body>
@@ -396,4 +435,4 @@ if __name__ == "__main__":
         print("💡 결과가 0개입니다. 더미 리포트를 생성합니다.")
         targets = [{"symbol": "NO-TARGETS", "price": 0.00, "dd": 0.00, "name": "탐지된 종목이 없습니다", "tier_label": "System Info", "radar_msg": "Universe scanned"}]
     generate_dashboard(targets)
-    print(f"\n✅ V7.5 작전 완료.")
+    print(f"\n✅ V8.0 작전 완료.")
