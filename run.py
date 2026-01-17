@@ -31,28 +31,29 @@ except ImportError:
     from deep_translator import GoogleTranslator
 
 # ==========================================
-# 2. V7 PATCH - 핵심 모듈 함수
+# 2. V7.1 핵심 모듈 (ETF 식별 + 로그 강화)
 # ==========================================
+
+# ETF 리스트 정의 (노이즈 관리용)
+ETF_LIST = ["TQQQ", "SQQQ", "SOXL", "SOXS", "TSLL", "NVDL", "LABU", "LABD"]
 
 ### V7 PATCH: Hard Cut (기초 체력 필터)
 def check_hard_cut(ticker, hist):
     try:
-        # 속도 최적화를 위해 fast_info 사용 권장, 실패시 info 사용
         try:
             market_cap = ticker.fast_info['market_cap']
         except:
             market_cap = ticker.info.get("marketCap", 0) or 0
             
-        # 20일 평균 거래대금 계산
         avg_dollar_vol = (hist["Close"] * hist["Volume"]).rolling(20).mean().iloc[-1]
 
-        if market_cap < 2_000_000_000:   # 시총 $2B 미만 탈락
-            return False
-        if avg_dollar_vol < 20_000_000: # 거래대금 $20M 미만 탈락
-            return False
-        return True
+        # ETF는 시총 기준 예외 적용 가능하나, 일단 안전하게 포함
+        if market_cap < 2_000_000_000: return False, "Small Cap"
+        if avg_dollar_vol < 20_000_000: return False, "Low Liquidity"
+        
+        return True, "Pass"
     except:
-        return False
+        return False, "Data Error"
 
 ### V7 PATCH: ATR 기반 Tier 계산
 def calc_atr_and_tier(hist):
@@ -60,132 +61,138 @@ def calc_atr_and_tier(hist):
     low = hist["Low"]
     close = hist["Close"]
 
-    # True Range 계산
     tr1 = high - low
     tr2 = (high - close.shift()).abs()
     tr3 = (low - close.shift()).abs()
     tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
 
-    # ATR(20) 및 변동성 비율
     atr = tr.rolling(20).mean().iloc[-1]
     cur_price = close.iloc[-1]
     
-    if cur_price == 0: return 3, -35, 0, "Error" # 에러 방지
+    if cur_price == 0: return 3, -35, 0, "Error"
 
     vol_ratio = atr / cur_price
 
-    # Tier 분류 (변동성에 따라 낙폭 기준 차등 적용)
     if vol_ratio < 0.025:
-        tier = 1
-        drop_threshold = -15
-        label = "Tier 1 (Safe)"
+        return 1, -15, round(vol_ratio * 100, 2), "Tier 1 (Safe)"
     elif vol_ratio < 0.05:
-        tier = 2
-        drop_threshold = -25
-        label = "Tier 2 (Growth)"
+        return 2, -25, round(vol_ratio * 100, 2), "Tier 2 (Growth)"
     else:
-        tier = 3
-        drop_threshold = -35
-        label = "Tier 3 (Volatile)"
-
-    return tier, drop_threshold, round(vol_ratio * 100, 2), label
+        return 3, -35, round(vol_ratio * 100, 2), "Tier 3 (Volatile)"
 
 ### V7 PATCH: Event Radar (거래량 + 가격 충격)
 def check_event_radar(hist):
     try:
         cur_vol = hist["Volume"].iloc[-1]
         avg_vol = hist["Volume"].rolling(20).mean().iloc[-1]
-        
-        # 거래량 비율 (평소 대비 몇 배인가)
         vol_ratio = cur_vol / avg_vol if avg_vol > 0 else 0
 
         prev_close = hist["Close"].iloc[-2]
         cur_close = hist["Close"].iloc[-1]
-        
-        # 가격 등락률 (절대값)
         price_change_pct = abs((cur_close - prev_close) / prev_close) * 100
-        
-        # 갭 하락률
         gap_pct = abs((hist["Open"].iloc[-1] - prev_close) / prev_close) * 100
 
-        # Composite Signature (복합 신호 탐지)
-        # 거래량 2.5배 이상 터지고 AND (가격이 4% 이상 움직이거나 OR 갭이 2% 이상 발생)
         if vol_ratio >= 2.5 and (price_change_pct >= 4.0 or gap_pct >= 2.0):
-            return True, round(vol_ratio, 2), round(price_change_pct, 2), round(gap_pct, 2)
-
-        return False, round(vol_ratio, 2), round(price_change_pct, 2), round(gap_pct, 2)
-
+            return True, round(vol_ratio, 2), round(price_change_pct, 2)
+        
+        return False, round(vol_ratio, 2), round(price_change_pct, 2)
     except:
-        return False, 0, 0, 0
+        return False, 0, 0
 
 # ==========================================
-# 3. 메인 로직 (Brain) - V7 엔진 가동
+# 3. 메인 로직 (Brain) - 유니버스 확장 & 로그 강화
 # ==========================================
 def run_logic():
-    print("🧠 [Brain] Hybrid Sniper V7 Radar Engine 가동...")
-    print("📡 레이더: 유동성 필터 + 가변 낙폭 + 이벤트 탐지 중...")
+    print("🧠 [Brain] Hybrid Sniper V7.1 Engine 가동...")
+    print("📡 레이더: 확장된 유니버스 + ETF 식별 + 정밀 로그 모드")
 
-    # 분석 대상 유니버스 (확장 권장)
+    # [GPT 제안 반영] 확장된 유니버스 (약 50개)
     universe = [
-        "MARA", "LCID", "TSLA", "INTC", "PLTR", "SOFI", "AMD", "NVDA", 
-        "RIVN", "OPEN", "IONQ", "JOBY", "UPST", "AFRM", "COIN", "MSTR", "CVNA",
-        "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NFLX"
+        # 1. 빅테크 & 우량주
+        "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NFLX", "TSLA", "NVDA", "AMD", "AVGO",
+        "CRM", "ADBE", "INTC", "CSCO", "CMCSA", "PEP", "KO", "COST", "WMT", "DIS",
+        # 2. 고성장 & 변동성
+        "PLTR", "SOFI", "AFRM", "UPST", "OPEN", "LCID", "RIVN", "DKNG", "ROKU", "SQ",
+        "COIN", "MSTR", "MARA", "RIOT", "CLSK", "CVNA", "U", "RBLX", "PATH", "AI",
+        "IONQ", "JOBY", "ACHR", "HIMS", "ALIT",
+        # 3. ETF (노이즈 체크용)
+        "TQQQ", "SQQQ", "SOXL", "SOXS", "TSLL", "NVDL", "LABU", "LABD"
     ]
 
     survivors = []
+    
+    # [GPT 제안 반영] 탈락 사유 카운터 (Visibility)
+    stats = {"HardCut": 0, "NotEnoughDrop": 0, "NoEvent": 0, "Error": 0, "Pass": 0}
 
-    for sym in universe:
+    print(f"🔍 총 {len(universe)}개 종목 정밀 스캔 시작...\n")
+
+    for i, sym in enumerate(universe):
         try:
-            print(f"analyzing.. {sym}", end="\r")
+            # 진행상황 표시 (줄바꿈 없이)
+            print(f"   Running.. [{i+1}/{len(universe)}] {sym:<5}", end="\r")
+            
             t = yf.Ticker(sym)
             hist = t.history(period="1y")
             
-            if len(hist) < 120: continue # 최소 데이터 확보
-
-            # === [Step 1] Hard Cut (기초 체력) ===
-            if not check_hard_cut(t, hist):
+            if len(hist) < 120: 
+                stats["Error"] += 1
                 continue
 
-            # === [Step 2] Tier 계산 (목표 설정) ===
-            tier, drop_threshold, vol_ratio, tier_label = calc_atr_and_tier(hist)
+            # 1. Hard Cut
+            passed, reason = check_hard_cut(t, hist)
+            if not passed:
+                stats["HardCut"] += 1
+                continue
 
-            # === [Step 3] Drawdown 계산 (120일 고점 기준) ===
+            # 2. Tier & Drop
+            tier, drop_limit, vol_ratio, tier_label = calc_atr_and_tier(hist)
+            
             high_120 = hist["High"].rolling(120).max().iloc[-1]
             cur = hist["Close"].iloc[-1]
             dd = ((cur - high_120) / high_120) * 100
 
-            # 낙폭 조건 미달 시 탈락 (예: -10% 인데 기준이 -15%면 탈락)
-            # dd는 음수이므로, dd > drop_threshold (예: -10 > -15) 이면 아직 덜 떨어진 것
-            if dd > drop_threshold:
+            if dd > drop_limit: # 낙폭 부족
+                stats["NotEnoughDrop"] += 1
                 continue
 
-            # === [Step 4] Event Radar (사건 탐지) ===
-            radar_hit, vol_spike, price_impulse, gap_impulse = check_event_radar(hist)
+            # 3. Event Radar
+            is_hit, vol_spike, move_pct = check_event_radar(hist)
             
-            if not radar_hit:
+            if not is_hit:
+                stats["NoEvent"] += 1
                 continue
             
-            # === [Step 5] 최종 생존 ===
-            print(f"🎯 [HIT] {sym} 포착! ({tier_label}) Vol:{vol_spike}x Drop:{round(dd,1)}%")
+            # === 생존 ===
+            stats["Pass"] += 1
+            is_etf = sym in ETF_LIST
+            final_label = f"[ETF] {tier_label}" if is_etf else tier_label
+            
+            print(f"🎯 [HIT] {sym} 포착! ({final_label}) Vol:{vol_spike}x Drop:{round(dd,1)}%")
             
             survivors.append({
                 "symbol": sym,
                 "price": round(cur, 2),
                 "dd": round(dd, 2),
-                "tier": tier,
-                "tier_label": tier_label,
-                "volatility_pct": vol_ratio,
-                "vol_spike": vol_spike,
-                "radar_msg": f"Vol {vol_spike}x / Move {price_impulse}%",
+                "tier_label": final_label,
+                "radar_msg": f"Vol {vol_spike}x / Move {move_pct}%",
                 "name": t.info.get("shortName", sym)
             })
 
         except Exception as e:
-            # print(f"⚠️ {sym} 처리 오류: {e}")
+            stats["Error"] += 1
             continue
 
     survivors.sort(key=lambda x: x["dd"])
-    print(f"\n⚔️ 최종 포착 종목: {len(survivors)}개")
+    
+    # [GPT 제안 반영] 스캔 결과 요약 리포트 출력
+    print("\n" + "="*40)
+    print(f"📊 [스캔 결과 요약] 총 {len(universe)}개 중")
+    print(f"   ❌ 기초체력 미달 (HardCut): {stats['HardCut']}개")
+    print(f"   📉 낙폭 조건 미달 (Waiting): {stats['NotEnoughDrop']}개")
+    print(f"   💤 이벤트 없음 (No Event): {stats['NoEvent']}개")
+    print(f"   ✅ 최종 포착 (Survivors): {stats['Pass']}개")
+    print("="*40 + "\n")
+    
     return survivors
 
 # ==========================================
@@ -206,9 +213,7 @@ def calculate_relevance_score(title_en):
     return score
 
 def get_google_news_rss_optimized(symbol):
-    # print(f"📰 {symbol} 뉴스 수집 중...")
     raw_news_items = []
-    
     try:
         url = f"https://news.google.com/rss/search?q={symbol}+stock&hl=en-US&gl=US&ceid=US:en"
         resp = requests.get(url, timeout=10)
@@ -253,14 +258,12 @@ def get_google_news_rss_optimized(symbol):
                 final_items.append(item)
                 
             return final_items
-
-    except Exception:
+    except:
         return []
-    
     return []
 
 # ==========================================
-# 5. 시각화 (대시보드 생성) - No Target 대응
+# 5. 시각화 (ETF 뱃지 지원)
 # ==========================================
 def generate_dashboard(targets):
     html_cards = ""
@@ -269,7 +272,6 @@ def generate_dashboard(targets):
         sym = stock['symbol']
         chart_id = f"tv_{sym}"
         
-        # 더미 데이터일 경우 뉴스 생략
         if sym == "NO-TARGETS":
             news_html = "<p class='no-news'>검색 조건을 만족하는 종목이 없습니다.</p>"
             news_footer = ""
@@ -298,12 +300,14 @@ def generate_dashboard(targets):
             </div>
             """
 
-        # V7 정보 표시
         tier_label = stock.get('tier_label', '')
         radar_msg = stock.get('radar_msg', '')
         
-        # 뱃지 스타일
-        tier_badge = f"<span class='badge' style='background:#2c3e50; color:#ecf0f1;'>{tier_label}</span>" if tier_label else ""
+        # [GPT 제안] ETF 여부에 따라 뱃지 색상 변경 (시각적 구분)
+        is_etf = "[ETF]" in tier_label
+        badge_bg = "#8e44ad" if is_etf else "#2c3e50" # ETF는 보라색, 일반은 네이비
+        
+        tier_badge = f"<span class='badge' style='background:{badge_bg}; color:#ecf0f1;'>{tier_label}</span>" if tier_label else ""
         radar_badge = f"<span class='badge' style='background:rgba(242, 54, 69, 0.15); color:#f23645;'>{radar_msg}</span>" if radar_msg else ""
 
         html_cards += f"""
@@ -350,7 +354,7 @@ def generate_dashboard(targets):
     <html>
     <head>
         <meta charset="utf-8">
-        <title>Hybrid Sniper V7.0 Terminal</title>
+        <title>Hybrid Sniper V7.1 Terminal</title>
         <style>
             :root {{
                 --bg-color: #131722; --card-bg: #1e222d; --text-main: #d1d4dc;
@@ -384,7 +388,7 @@ def generate_dashboard(targets):
     </head>
     <body>
         <div class="container">
-            <h1>HYBRID SNIPER <span style="font-size:0.5em; color:#4cd137;">V7.0</span></h1>
+            <h1>HYBRID SNIPER <span style="font-size:0.5em; color:#4cd137;">V7.1</span></h1>
             {html_cards}
         </div>
     </body>
@@ -395,31 +399,21 @@ def generate_dashboard(targets):
     with open("data/artifacts/dashboard/index.html", "w", encoding="utf-8") as f:
         f.write(full_html)
 
-# ==========================================
-# 6. 메인 실행부 (No Target Fix Applied)
-# ==========================================
 if __name__ == "__main__":
-    # 1. 로직 실행
     targets = run_logic()
     
-    # 2. 결과가 0개일 경우, 더미 데이터 생성 (보고서 생성 강제)
+    # 0개일 경우 처리
     if not targets:
-        print("\n⚠️ 레이더 탐지 결과가 0개입니다.")
-        print("💡 '결과 없음' 보고서를 생성합니다.")
-        
+        print("💡 결과가 0개입니다. '탐지 없음' 보고서를 생성합니다.")
         targets = [{
             "symbol": "NO-TARGETS", 
             "price": 0.00, 
             "dd": 0.00, 
-            "name": "탐지된 종목이 없습니다 (조건 미달)", 
+            "name": "탐지된 종목이 없습니다 (엄격한 조건)", 
             "tier_label": "System Info", 
-            "radar_msg": "Try adjusting universe"
+            "radar_msg": "Universe scanned"
         }]
     
-    # 3. 대시보드 생성 (무조건 실행됨)
     generate_dashboard(targets)
-    
-    # 4. 파일 위치 안내
     abs_path = os.path.abspath('data/artifacts/dashboard/index.html')
-    print("\n✅ 작전 완료. 아래 경로의 파일을 여십시오:")
-    print(f"👉 {abs_path}")
+    print(f"\n✅ 작전 완료. 보고서 생성됨: \n👉 {abs_path}")
