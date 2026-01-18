@@ -32,13 +32,18 @@ except ImportError:
     subprocess.check_call([sys.executable, "-m", "pip", "install", "deep-translator"])
     from deep_translator import GoogleTranslator
 
-# 설정값
-UNIVERSE_MAX = 150  # 분석할 최대 종목 수
-LIQUIDITY_LOOKBACK = 10 
+# ---------------------------------------------------------
+# ⚙️ 필터 설정 (V9.3 Adaptive Config)
+# ---------------------------------------------------------
+UNIVERSE_MAX = 150
+CUTOFF_SCORE = 70       # (완화) 85 -> 70 : WATCH/READY 생존 보장
+CUTOFF_STRUCT = 1.05    # (완화) 1.08 -> 1.05 : 5% Higher Low 인정
+CUTOFF_NOISE = 2        # (완화) 1 -> 2 : 복합 악재만 제거
+CUTOFF_VOL_RATIO = 0.06 # (유지) ATR/Price 6% 이하
+CUTOFF_DEEP_DROP = -55  # (유지) 고점 대비 -55% 이하 지하실 제거
+# ---------------------------------------------------------
 
-# ETF 리스트
 ETF_LIST = ["TQQQ", "SQQQ", "SOXL", "SOXS", "TSLL", "NVDL", "LABU", "LABD"]
-# 핵심 감시 종목 (Core Watchlist)
 CORE_WATCHLIST = [
     "DKNG", "PLTR", "SOFI", "AFRM", "UPST", "OPEN", "LCID", "RIVN", "ROKU", "SQ",
     "COIN", "MSTR", "CVNA", "U", "RBLX", "PATH", "AI", "IONQ", "HIMS"
@@ -168,9 +173,13 @@ def analyze_reignition_structure(hist):
         grade = ""
         priority = 4
         trigger_msg = ""
-        rib_score = 50
+        rib_score = 50 # 기본 점수
 
+        # Higher Low Bonus
         if base_b_price > base_a_price * 1.05: rib_score += 10
+        
+        # Compression Bonus (ATR 감소 등) - 약식
+        # (여기선 별도 계산 없으므로 생략하되 추후 추가 가능)
 
         if current_price > pivot_price:
             status = "🔥 RIB BREAKOUT"
@@ -294,7 +303,7 @@ def get_google_news_rss(symbol):
     return []
 
 # ==========================================
-# 5. Main Scan Logic (Filter Compression)
+# 5. Main Scan Logic (V9.3 Adaptive Rescue)
 # ==========================================
 def check_hard_cut(ticker, hist):
     try:
@@ -316,20 +325,16 @@ def calc_atr_and_tier(hist):
     except: return 3, -30, 0, "Error"
 
 def run_scan():
-    print("🧠 [Brain] Turnaround Sniper V9.2 (Filter Compression) 가동...")
+    print("🧠 [Brain] Turnaround Sniper V9.3 (Adaptive Rescue) 가동...")
+    print(f"⚙️ Config: Score>={CUTOFF_SCORE}, Struct>={CUTOFF_STRUCT}, Noise<={CUTOFF_NOISE}")
     
     universe = build_universe()
     survivors = []
+    rejected_candidates = [] # 탈락자 구조대용 리스트
     
-    # 통계용 카운터
     stats = {
-        "HardCut": 0, 
-        "NotEnoughDrop": 0, 
-        "Filter_DeepDrop": 0,
-        "Filter_Score": 0, 
-        "Filter_Vol": 0, 
-        "Filter_Struct": 0, 
-        "Filter_Noise": 0, 
+        "HardCut": 0, "NotEnoughDrop": 0, 
+        "F_DeepDrop": 0, "F_Score": 0, "F_Vol": 0, "F_Struct": 0, "F_Noise": 0, 
         "Pass": 0
     }
     
@@ -360,78 +365,129 @@ def run_scan():
                 stats["NotEnoughDrop"] += 1
                 continue
 
-            # [Filter 4] 과도한 낙폭 제거 (-55% 이하인 지하실 종목 제외)
-            if dd <= -55:
-                stats["Filter_DeepDrop"] += 1
+            # 기본 데이터 패키징 (구조대용)
+            candidate_data = {
+                "symbol": sym, "price": round(cur, 2), "dd": round(dd, 2),
+                "tier_label": tier_label, "name": t.info.get("shortName", sym),
+                "vol_ratio": vol_ratio
+            }
+
+            # [Filter 1] Deep Drop Cut
+            if dd <= CUTOFF_DEEP_DROP:
+                stats["F_DeepDrop"] += 1
                 continue
 
             rib_data = analyze_reignition_structure(hist)
+            candidate_data["rib_data"] = rib_data # RIB 데이터 추가
+
+            # RIB 데이터 없으면 탈락
+            if not rib_data:
+                stats["F_Score"] += 1
+                continue
             
-            # [Filter 1] RIB Score Cut (85점 미만 탈락)
-            # rib_data가 없거나, 점수가 낮으면 탈락
-            if not rib_data or rib_data.get('rib_score', 0) < 85:
-                stats["Filter_Score"] += 1
-                continue
-
-            # [Filter 2] 변동성 필터 (ATR/Price > 6% 탈락)
-            if vol_ratio > 0.06:
-                stats["Filter_Vol"] += 1
-                continue
-
-            # [Filter 3] 구조 신뢰 필터 (Base B >= Base A * 1.08)
-            # 8% 이상 높은 저점이 아니면 신뢰 부족
             base_a = rib_data.get('base_a', 0)
             base_b = rib_data.get('base_b', 0)
-            if base_b < base_a * 1.08:
-                stats["Filter_Struct"] += 1
+            score = rib_data.get('rib_score', 0)
+
+            # 탈락 사유 추적
+            fail_reason = None
+            
+            # [Filter 2] Score Cut
+            if score < CUTOFF_SCORE:
+                fail_reason = f"Score({score}) < {CUTOFF_SCORE}"
+                stats["F_Score"] += 1
+            
+            # [Filter 3] Volatility Cut
+            elif vol_ratio > CUTOFF_VOL_RATIO:
+                fail_reason = f"Vol({vol_ratio:.1%}) > {CUTOFF_VOL_RATIO:.0%}"
+                stats["F_Vol"] += 1
+
+            # [Filter 4] Struct Cut
+            elif base_b < base_a * CUTOFF_STRUCT:
+                ratio = base_b/base_a if base_a else 0
+                fail_reason = f"Struct({ratio:.2f}) < {CUTOFF_STRUCT}"
+                stats["F_Struct"] += 1
+
+            # [Filter 5] Noise Cut
+            else:
+                news_items = get_google_news_rss(sym)
+                noise_score, noise_reason = calculate_noise_score(news_items, vol_ratio)
+                candidate_data["news"] = news_items
+                candidate_data["noise_score"] = noise_score
+                candidate_data["noise_reason"] = noise_reason
+
+                if noise_score > CUTOFF_NOISE:
+                    fail_reason = f"Noise({noise_score}) > {CUTOFF_NOISE}"
+                    stats["F_Noise"] += 1
+
+            # 생존 여부 판단
+            if fail_reason:
+                candidate_data["fail_reason"] = fail_reason
+                rejected_candidates.append(candidate_data) # 탈락자 명단에 추가
                 continue
 
-            # 뉴스 및 노이즈 분석
-            news_items = get_google_news_rss(sym)
-            noise_score, noise_reason = calculate_noise_score(news_items, vol_ratio)
-
-            # [Filter 5] 뉴스 노이즈 컷 (Score > 1 탈락)
-            if noise_score > 1:
-                stats["Filter_Noise"] += 1
-                continue
-
+            # 최종 통과
             cur_vol = hist["Volume"].iloc[-1]
             avg_vol = hist["Volume"].rolling(20).mean().iloc[-1]
             vol_spike = round(cur_vol/avg_vol, 1) if avg_vol > 0 else 0
+            candidate_data["radar_msg"] = f"Vol {vol_spike}x"
             
             stats["Pass"] += 1
-            
-            survivors.append({
-                "symbol": sym,
-                "price": round(cur, 2),
-                "dd": round(dd, 2),
-                "tier_label": tier_label,
-                "radar_msg": f"Vol {vol_spike}x",
-                "name": t.info.get("shortName", sym),
-                "rib_data": rib_data,
-                "news": news_items,
-                "noise_score": noise_score,
-                "noise_reason": noise_reason
-            })
+            survivors.append(candidate_data)
             
         except Exception as e:
             continue
 
+    # 🚨 RESCUE PROTOCOL (구조대 가동)
+    # 생존자가 너무 적으면(예: 3개 미만), 탈락자 중 Score 상위 종목을 구출
+    rescued_count = 0
+    if len(survivors) < 3:
+        print("\n🚨 [Rescue Protocol] 생존자 부족. Near-miss 구조대 가동!")
+        # Score 높은 순 정렬
+        rejected_candidates.sort(key=lambda x: -x.get('rib_data', {}).get('rib_score', 0))
+        
+        # 상위 N개 구출 (최대 10개)
+        for cand in rejected_candidates[:10]:
+            cand["is_rescue"] = True # 구조된 종목 태그
+            if "news" not in cand: # 뉴스 없으면 채워주기 (API 절약 위해 위에서 안 불렀을 수 있음)
+                try:
+                    cand["news"] = get_google_news_rss(cand["symbol"])
+                    ns, nr = calculate_noise_score(cand["news"], cand["vol_ratio"])
+                    cand["noise_score"] = ns
+                    cand["noise_reason"] = nr
+                except: pass
+            
+            survivors.append(cand)
+            rescued_count += 1
+            print(f"   🚑 Rescued: {cand['symbol']} (Score: {cand['rib_data']['rib_score']}, Reason: {cand.get('fail_reason')})")
+
+    # 최종 정렬
     survivors.sort(key=lambda x: (
+        0 if not x.get("is_rescue") else 1, # 생존자 우선
         x['rib_data'].get('priority', 99) if x['rib_data'] else 99, 
         -x['rib_data'].get('rib_score', 0) if x['rib_data'] else 0,
-        x['noise_score']
+        x.get('noise_score', 0)
     ))
     
     print("\n" + "="*40)
     print(f"📊 [스캔 결과] 총 {len(universe)}개 중")
     print(f"   ❌ 탈락 (Hard/DD): {stats['HardCut'] + stats['NotEnoughDrop']}")
-    print(f"   🔻 필터 (DeepDrop): {stats['Filter_DeepDrop']}")
-    print(f"   🔻 필터 (Score<85): {stats['Filter_Score']}")
-    print(f"   🔻 필터 (Vol>6%): {stats['Filter_Vol']}")
-    print(f"   🔻 필터 (Struct<8%): {stats['Filter_Struct']}")
-    print(f"   🔻 필터 (Noise>1): {stats['Filter_Noise']}")
-    print(f"   ✅ 최종 생존: {len(survivors)}")
+    print(f"   🔻 필터 (DeepDrop): {stats['F_DeepDrop']}")
+    print(f"   🔻 필터 (Score<{CUTOFF_SCORE}): {stats['F_Score']}")
+    print(f"   🔻 필터 (Vol>{CUTOFF_VOL_RATIO:.0%}): {stats['F_Vol']}")
+    print(f"   🔻 필터 (Struct<{CUTOFF_STRUCT}x): {stats['F_Struct']}")
+    print(f"   🔻 필터 (Noise>{CUTOFF_NOISE}): {stats['F_Noise']}")
+    print(f"   ✅ 정규 생존: {stats['Pass']}")
+    print(f"   🚑 구조 생존: {rescued_count}")
+    print(f"   📋 최종 보고: {len(survivors)}")
+    
+    # 탈락 리스트 상위 로그 출력
+    print("-" * 40)
+    print("📜 [Rejected Log - Top 5 by Score]")
+    rejected_candidates.sort(key=lambda x: -x.get('rib_data', {}).get('rib_score', 0))
+    for r in rejected_candidates[:5]:
+        s = r['rib_data'].get('rib_score', 0) if r.get('rib_data') else 0
+        print(f"   ❌ {r['symbol']}: {r.get('fail_reason')} | Score {s}")
     print("="*40 + "\n")
     
     return survivors
@@ -447,17 +503,27 @@ def generate_dashboard(targets):
     for s in targets:
         rib = s.get("rib_data")
         noise = s.get("noise_score", 0)
+        is_rescue = s.get("is_rescue", False)
         
-        if rib and rib.get('grade') == 'ACTION': top_tier.append(s)
-        elif rib and rib.get('grade') == 'SETUP' and noise < 2: top_tier.append(s)
-        elif rib and rib.get('grade') == 'RADAR' and noise < 3: mid_tier.append(s)
-        else: low_tier.append(s)
+        # Tier 분류
+        if is_rescue:
+            low_tier.append(s) # 구조된 종목은 LOW로
+        elif rib and rib.get('grade') == 'ACTION': 
+            top_tier.append(s)
+        elif rib and rib.get('grade') == 'SETUP' and noise < 2: 
+            top_tier.append(s)
+        elif rib and rib.get('grade') == 'RADAR': 
+            mid_tier.append(s)
+        else: 
+            low_tier.append(s)
 
     def render_card(stock):
         sym = stock['symbol']
         rib = stock.get("rib_data") or {} 
         noise_sc = stock.get("noise_score", 0)
         noise_rs = stock.get("noise_reason", "")
+        fail_rs = stock.get("fail_reason", "")
+        is_rescue = stock.get("is_rescue", False)
         
         base_a = rib.get("base_a")
         pivot = rib.get("pivot")
@@ -479,6 +545,8 @@ def generate_dashboard(targets):
         rib_html = ""
         if rib:
             grade_color = {"ACTION": "#e74c3c", "SETUP": "#e67e22", "RADAR": "#f1c40f", "IGNORE": "#95a5a6"}.get(grade, "#95a5a6")
+            if is_rescue: grade_color = "#7f8c8d" # 구조된 종목은 회색
+            
             rib_html = f"""
             <div class="rib-box" style="border-left: 4px solid {grade_color}; background: #262b3e; padding: 10px; margin-bottom: 10px; border-radius: 4px;">
                 <div style="display:flex; justify-content:space-between; color:#fff; font-weight:bold; font-size:0.9em;">
@@ -493,6 +561,11 @@ def generate_dashboard(targets):
             </div>
             """
         
+        # Rescue Badge
+        rescue_html = ""
+        if is_rescue:
+             rescue_html = f"<div style='background:#c0392b; color:white; padding:5px; border-radius:4px; font-size:0.8em; margin-bottom:10px; text-align:center;'>🚑 NEAR MISS: {fail_rs}</div>"
+
         noise_html = ""
         if noise_sc > 0:
             noise_html = f"<div style='font-size:0.75em; color:#7f8c8d; margin-bottom:5px;'>⚠️ Noise Lv.{noise_sc} ({noise_rs})</div>"
@@ -521,6 +594,7 @@ def generate_dashboard(targets):
             </div>
             <div class="card-body">
                 <div class="info-col">
+                    {rescue_html}
                     {rib_html}
                     {noise_html}
                     <div class="news-box">{news_html}</div>
@@ -545,12 +619,13 @@ def generate_dashboard(targets):
     <html>
     <head>
         <meta charset="utf-8">
-        <title>Sniper V9.2 Filtered</title>
+        <title>Sniper V9.3 Adaptive</title>
         <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
         <style>
             body {{ background: #131722; color: #d1d4dc; font-family: sans-serif; padding: 20px; }}
             .container {{ max-width: 1200px; margin: 0 auto; }}
             h1 {{ text-align: center; color: #e67e22; }}
+            .config-bar {{ background: #1e222d; padding: 10px; border-radius: 6px; text-align: center; margin-bottom: 20px; font-size: 0.9em; color: #aaa; border: 1px solid #2a2e39; }}
             details {{ margin-bottom: 20px; background: #1e222d; border-radius: 8px; overflow: hidden; }}
             summary {{ padding: 15px; background: #2a2e39; cursor: pointer; font-weight: bold; list-style: none; }}
             summary:hover {{ background: #363c4e; }}
@@ -560,7 +635,7 @@ def generate_dashboard(targets):
             .sym {{ font-size: 1.2em; font-weight: bold; color: #fff; }}
             .name {{ font-size: 0.8em; color: #777; flex-grow: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
             .badge {{ font-size: 0.7em; padding: 2px 5px; border-radius: 3px; }}
-            .card-body {{ display: flex; height: 300px; }}
+            .card-body {{ display: flex; height: 320px; }}
             .info-col {{ flex: 4; padding: 10px; overflow-y: auto; border-right: 1px solid #2a2e39; }}
             .chart-col {{ flex: 6; }}
             .news-box {{ margin-top: 10px; }}
@@ -568,7 +643,11 @@ def generate_dashboard(targets):
     </head>
     <body>
         <div class="container">
-            <h1>SNIPER V9.2 <span style="font-size:0.6em; color:#aaa;">FILTER COMPRESSION</span></h1>
+            <h1>SNIPER V9.3 <span style="font-size:0.6em; color:#aaa;">ADAPTIVE RESCUE</span></h1>
+            
+            <div class="config-bar">
+                ⚙️ Active Cutoffs: Score ≥ {CUTOFF_SCORE} | Struct ≥ {CUTOFF_STRUCT} | Noise ≤ {CUTOFF_NOISE} | Rescue Mode: ON
+            </div>
             
             <details open>
                 <summary>🏆 TOP TIER (Action & Setup) - {len(top_tier)} Targets</summary>
@@ -585,7 +664,7 @@ def generate_dashboard(targets):
             </details>
 
             <details>
-                <summary>💤 LOW TIER (Ignore & Noise) - {len(low_tier)} Targets</summary>
+                <summary>🚑 LOW TIER & NEAR MISS - {len(low_tier)} Targets</summary>
                 <div class="section-content">
                     {"".join([render_card(s) for s in low_tier])}
                 </div>
