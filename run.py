@@ -294,7 +294,7 @@ def get_google_news_rss(symbol):
     return []
 
 # ==========================================
-# 5. Main Scan Logic
+# 5. Main Scan Logic (Filter Compression)
 # ==========================================
 def check_hard_cut(ticker, hist):
     try:
@@ -316,11 +316,22 @@ def calc_atr_and_tier(hist):
     except: return 3, -30, 0, "Error"
 
 def run_scan():
-    print("🧠 [Brain] Turnaround Sniper V9.1 (Stabilized) 가동...")
+    print("🧠 [Brain] Turnaround Sniper V9.2 (Filter Compression) 가동...")
     
     universe = build_universe()
     survivors = []
-    stats = {"HardCut": 0, "NotEnoughDrop": 0, "Pass": 0}
+    
+    # 통계용 카운터
+    stats = {
+        "HardCut": 0, 
+        "NotEnoughDrop": 0, 
+        "Filter_DeepDrop": 0,
+        "Filter_Score": 0, 
+        "Filter_Vol": 0, 
+        "Filter_Struct": 0, 
+        "Filter_Noise": 0, 
+        "Pass": 0
+    }
     
     print(f"\n🔍 정밀 스캔 시작 ({len(universe)}개 종목)...")
 
@@ -349,9 +360,40 @@ def run_scan():
                 stats["NotEnoughDrop"] += 1
                 continue
 
+            # [Filter 4] 과도한 낙폭 제거 (-55% 이하인 지하실 종목 제외)
+            if dd <= -55:
+                stats["Filter_DeepDrop"] += 1
+                continue
+
             rib_data = analyze_reignition_structure(hist)
+            
+            # [Filter 1] RIB Score Cut (85점 미만 탈락)
+            # rib_data가 없거나, 점수가 낮으면 탈락
+            if not rib_data or rib_data.get('rib_score', 0) < 85:
+                stats["Filter_Score"] += 1
+                continue
+
+            # [Filter 2] 변동성 필터 (ATR/Price > 6% 탈락)
+            if vol_ratio > 0.06:
+                stats["Filter_Vol"] += 1
+                continue
+
+            # [Filter 3] 구조 신뢰 필터 (Base B >= Base A * 1.08)
+            # 8% 이상 높은 저점이 아니면 신뢰 부족
+            base_a = rib_data.get('base_a', 0)
+            base_b = rib_data.get('base_b', 0)
+            if base_b < base_a * 1.08:
+                stats["Filter_Struct"] += 1
+                continue
+
+            # 뉴스 및 노이즈 분석
             news_items = get_google_news_rss(sym)
             noise_score, noise_reason = calculate_noise_score(news_items, vol_ratio)
+
+            # [Filter 5] 뉴스 노이즈 컷 (Score > 1 탈락)
+            if noise_score > 1:
+                stats["Filter_Noise"] += 1
+                continue
 
             cur_vol = hist["Volume"].iloc[-1]
             avg_vol = hist["Volume"].rolling(20).mean().iloc[-1]
@@ -383,14 +425,19 @@ def run_scan():
     
     print("\n" + "="*40)
     print(f"📊 [스캔 결과] 총 {len(universe)}개 중")
-    print(f"   ❌ 탈락: {stats['HardCut'] + stats['NotEnoughDrop']}")
-    print(f"   ✅ 최종 분석: {len(survivors)}")
+    print(f"   ❌ 탈락 (Hard/DD): {stats['HardCut'] + stats['NotEnoughDrop']}")
+    print(f"   🔻 필터 (DeepDrop): {stats['Filter_DeepDrop']}")
+    print(f"   🔻 필터 (Score<85): {stats['Filter_Score']}")
+    print(f"   🔻 필터 (Vol>6%): {stats['Filter_Vol']}")
+    print(f"   🔻 필터 (Struct<8%): {stats['Filter_Struct']}")
+    print(f"   🔻 필터 (Noise>1): {stats['Filter_Noise']}")
+    print(f"   ✅ 최종 생존: {len(survivors)}")
     print("="*40 + "\n")
     
     return survivors
 
 # ==========================================
-# 6. Dashboard Generation (Safe Rendering)
+# 6. Dashboard Generation
 # ==========================================
 def generate_dashboard(targets):
     top_tier = []
@@ -408,11 +455,10 @@ def generate_dashboard(targets):
 
     def render_card(stock):
         sym = stock['symbol']
-        rib = stock.get("rib_data") or {} # None 방지
+        rib = stock.get("rib_data") or {} 
         noise_sc = stock.get("noise_score", 0)
         noise_rs = stock.get("noise_reason", "")
         
-        # 안전 수치 추출
         base_a = rib.get("base_a")
         pivot = rib.get("pivot")
         base_b = rib.get("base_b")
@@ -430,7 +476,6 @@ def generate_dashboard(targets):
             try: return f"{float(v):.1f}%"
             except: return "N/A"
 
-        # RIB UI
         rib_html = ""
         if rib:
             grade_color = {"ACTION": "#e74c3c", "SETUP": "#e67e22", "RADAR": "#f1c40f", "IGNORE": "#95a5a6"}.get(grade, "#95a5a6")
@@ -448,19 +493,16 @@ def generate_dashboard(targets):
             </div>
             """
         
-        # Noise UI
         noise_html = ""
         if noise_sc > 0:
             noise_html = f"<div style='font-size:0.75em; color:#7f8c8d; margin-bottom:5px;'>⚠️ Noise Lv.{noise_sc} ({noise_rs})</div>"
 
-        # News UI
         news_html = ""
         for n in stock.get('news', []):
             tags_html = "".join([f"<span style='font-size:0.7em; background:#444; color:#fff; padding:1px 4px; border-radius:3px; margin-right:3px;'>{t[0]}</span>" for t in n.get('tags', [])])
             news_html += f"<div style='margin-bottom:4px;'><span style='font-size:0.7em; color:#aaa;'>{n.get('date_str','')}</span> {tags_html} <a href='{n.get('link','#')}' target='_blank' style='color:#d1d4dc; font-size:0.85em; text-decoration:none;'>{n.get('title_ko','')}</a></div>"
         if not news_html: news_html = "<div style='font-size:0.8em; color:#666;'>No recent news</div>"
 
-        # TimeMachine Link
         tm_link = ""
         base_a_date = rib.get("base_a_date")
         base_b_date = rib.get("base_b_date")
@@ -489,7 +531,7 @@ def generate_dashboard(targets):
                         <div id="{chart_id}" style="height:250px;"></div>
                         <script type="text/javascript">
                             new TradingView.widget({{
-                                "autosize": true, "symbol": "{sym}", "interval": "D", "timezone": "Etc/UTC", "theme": "dark", "style": "1", "locale": "en", "toolbar_bg": "#f1f3f6", "enable_publishing": false, "hide_top_toolbar": true, "container_id": "{chart_id}"
+                                "autosize": true, "symbol": "{sym}", "interval": "D", "timezone": "Etc/UTC", "theme": "dark", "style": "1", "locale": "en", "hide_top_toolbar": true, "container_id": "{chart_id}"
                             }});
                         </script>
                     </div>
@@ -503,7 +545,7 @@ def generate_dashboard(targets):
     <html>
     <head>
         <meta charset="utf-8">
-        <title>Sniper V9.1 Universe</title>
+        <title>Sniper V9.2 Filtered</title>
         <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
         <style>
             body {{ background: #131722; color: #d1d4dc; font-family: sans-serif; padding: 20px; }}
@@ -526,7 +568,7 @@ def generate_dashboard(targets):
     </head>
     <body>
         <div class="container">
-            <h1>SNIPER V9.1 <span style="font-size:0.6em; color:#aaa;">STABILIZED</span></h1>
+            <h1>SNIPER V9.2 <span style="font-size:0.6em; color:#aaa;">FILTER COMPRESSION</span></h1>
             
             <details open>
                 <summary>🏆 TOP TIER (Action & Setup) - {len(top_tier)} Targets</summary>
