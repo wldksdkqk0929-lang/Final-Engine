@@ -31,7 +31,7 @@ except ImportError:
 ETF_LIST = ["TQQQ", "SQQQ", "SOXL", "SOXS", "TSLL", "NVDL", "LABU", "LABD"]
 
 # ==========================================
-# 2. V8.7 핵심: 재점화 구조 엔진 (로직 유지)
+# 2. V8.7 Re-Ignition Engine (RIB)
 # ==========================================
 def analyze_reignition_structure(hist):
     try:
@@ -48,19 +48,19 @@ def analyze_reignition_structure(hist):
         # Pivot 탐지
         post_base_a = recent.loc[base_a_idx:]
         if len(post_base_a) < 5: 
-            return {"status": "FORMING_A", "score": 0, "grade": "IGNORE", "priority": 4}
+            return {"status": "FORMING_A", "rib_score": 0, "grade": "IGNORE", "priority": 4}
 
         pivot_idx = post_base_a["Close"].idxmax()
         pivot_price = post_base_a.loc[pivot_idx]["Close"]
         pivot_date = pivot_idx.strftime("%Y-%m-%d")
         
         if pivot_date == base_a_date:
-             return {"status": "BOUNCING", "score": 10, "grade": "IGNORE", "priority": 4}
+             return {"status": "BOUNCING", "rib_score": 10, "grade": "IGNORE", "priority": 4}
 
         # 2. Base B 탐지
         post_pivot = post_base_a.loc[pivot_idx:]
         if len(post_pivot) < 3: 
-             return {"status": "AT_PIVOT", "score": 20, "grade": "IGNORE", "priority": 4}
+             return {"status": "AT_PIVOT", "rib_score": 20, "grade": "IGNORE", "priority": 4}
 
         base_b_idx = post_pivot["Close"].idxmin()
         base_b_price = post_pivot.loc[base_b_idx]["Close"]
@@ -68,11 +68,11 @@ def analyze_reignition_structure(hist):
 
         # 구조 무효화 조건
         if base_b_price < base_a_price:
-            return {"status": "INVALID (Low Broken)", "score": 0, "grade": "IGNORE", "priority": 99}
+            return {"status": "INVALID (Low Broken)", "rib_score": 0, "grade": "IGNORE", "priority": 99}
         if current_price < base_b_price:
-            return {"status": "INVALID (B Broken)", "score": 0, "grade": "IGNORE", "priority": 99}
+            return {"status": "INVALID (B Broken)", "rib_score": 0, "grade": "IGNORE", "priority": 99}
 
-        # 전술 등급 산정
+        # 전술 등급 및 RIB Score 산정
         if pivot_price == 0: dist_pct = 0
         else: dist_pct = (pivot_price - current_price) / pivot_price * 100
         
@@ -81,33 +81,33 @@ def analyze_reignition_structure(hist):
         badge_color = ""
         priority = 4
         trigger_msg = ""
-        score = 50
+        rib_score = 50
 
-        if base_b_price > base_a_price * 1.05: score += 10 # Higher Low 보너스
+        if base_b_price > base_a_price * 1.05: rib_score += 10 # Higher Low 보너스
 
         if current_price > pivot_price:
-            status = "🔥 BREAKOUT"
+            status = "🔥 RIB BREAKOUT"
             grade = "ACTION"
             badge_color = "#e74c3c" # Red
             priority = 1
             trigger_msg = "Pivot 돌파 확인. 즉시 진입 검토."
-            score += 40
+            rib_score += 40
         elif dist_pct <= 3.0:
-            status = "🚀 READY"
+            status = "🚀 RIB READY"
             grade = "SETUP"
             badge_color = "#e67e22" # Orange
             priority = 2
             trigger_msg = f"Pivot까지 {dist_pct:.1f}% 남음. 대기."
-            score += 30
+            rib_score += 30
         elif dist_pct <= 8.0:
-            status = "👀 WATCH"
+            status = "👀 RIB WATCH"
             grade = "RADAR"
             badge_color = "#f1c40f" # Yellow
             priority = 3
             trigger_msg = f"구조 관찰 중 (Gap {dist_pct:.1f}%)."
-            score += 10
+            rib_score += 10
         else:
-            status = "💤 EARLY"
+            status = "💤 RIB EARLY"
             grade = "IGNORE"
             badge_color = "#95a5a6" # Grey
             priority = 4
@@ -123,7 +123,7 @@ def analyze_reignition_structure(hist):
             "priority": priority,
             "trigger_msg": trigger_msg,
             "badge_color": badge_color,
-            "score": score
+            "rib_score": rib_score
         }
 
     except Exception as e:
@@ -150,7 +150,7 @@ def analyze_news_structure(title_en):
     return tags
 
 # ==========================================
-# 4. 메인 로직 [V8.7: Wide Net 확장]
+# 4. 레이더 시스템 (Hard + Soft)
 # ==========================================
 def check_hard_cut(ticker, hist):
     try:
@@ -158,7 +158,7 @@ def check_hard_cut(ticker, hist):
         except: market_cap = ticker.info.get("marketCap", 0) or 0
         avg_dollar_vol = (hist["Close"] * hist["Volume"]).rolling(20).mean().iloc[-1]
         
-        # [V8.7 완화] Cap $2B -> $1B, Vol $20M -> $10M
+        # Cap $1B, Vol $10M (Wide Net)
         if market_cap < 1_000_000_000: return False, "Small Cap"
         if avg_dollar_vol < 10_000_000: return False, "Low Liquidity"
         return True, "Pass"
@@ -175,13 +175,11 @@ def calc_atr_and_tier(hist):
     if cur_price == 0: return 3, -35, 0, "Error"
     vol_ratio = atr / cur_price
 
-    # [V8.7 완화] 낙폭 기준 완화 (조금 덜 빠져도 구조 좋으면 통과)
-    # Tier 1: -10%, Tier 2: -20%, Tier 3: -30%
     if vol_ratio < 0.025: return 1, -10, round(vol_ratio * 100, 2), "Tier 1 (Safe)"
     elif vol_ratio < 0.05: return 2, -20, round(vol_ratio * 100, 2), "Tier 2 (Growth)"
     else: return 3, -30, round(vol_ratio * 100, 2), "Tier 3 (Volatile)"
 
-def check_event_radar(hist):
+def check_event_radar(hist): # Hard Event Radar
     try:
         cur_vol = hist["Volume"].iloc[-1]
         avg_vol = hist["Volume"].rolling(20).mean().iloc[-1]
@@ -190,13 +188,66 @@ def check_event_radar(hist):
         cur_close = hist["Close"].iloc[-1]
         price_change_pct = abs((cur_close - prev_close) / prev_close) * 100
         gap_pct = abs((hist["Open"].iloc[-1] - prev_close) / prev_close) * 100
+        
         if vol_ratio >= 2.5 and (price_change_pct >= 4.0 or gap_pct >= 2.0):
             return True, round(vol_ratio, 2), round(price_change_pct, 2)
         return False, round(vol_ratio, 2), round(price_change_pct, 2)
     except: return False, 0, 0
 
+def check_soft_radar(hist, rib_data): # [V8.7 NEW] Soft Momentum Radar
+    try:
+        close = hist["Close"]
+        volume = hist["Volume"]
+        current_close = close.iloc[-1]
+        current_vol = volume.iloc[-1]
+        avg_vol = volume.rolling(20).mean().iloc[-1]
+        
+        # 1. 거래량 회복 (1.3x)
+        vol_ratio = current_vol / avg_vol if avg_vol > 0 else 0
+        cond_vol = vol_ratio >= 1.3
+        
+        # 2. 단기 추세 (MA5)
+        ma5 = close.rolling(5).mean().iloc[-1]
+        cond_ma5 = current_close > ma5
+        
+        # 3. 변동성 안정 (ATR% < 6%)
+        high, low = hist["High"], hist["Low"]
+        tr1 = high - low
+        tr2 = (high - close.shift()).abs()
+        tr3 = (low - close.shift()).abs()
+        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        atr20 = tr.rolling(20).mean().iloc[-1]
+        atr_ratio = atr20 / current_close if current_close > 0 else 0
+        cond_atr = atr_ratio < 0.06
+        
+        # 4. Base B 지지력 (RIB 데이터 연동)
+        cond_base_b = False
+        if rib_data and "base_b" in rib_data and "INVALID" not in rib_data.get("status", ""):
+            base_b_val = rib_data["base_b"]
+            low_min_5 = hist["Low"].tail(5).min()
+            cond_base_b = low_min_5 >= base_b_val
+            
+        # 판정 (2개 이상 충족 시 Hit)
+        conditions = [cond_vol, cond_ma5, cond_atr, cond_base_b]
+        hit_count = sum(conditions)
+        is_soft_hit = hit_count >= 2
+        
+        # 디버그 메시지 구성
+        debug_parts = []
+        if cond_vol: debug_parts.append(f"Vol {vol_ratio:.1f}x")
+        if cond_ma5: debug_parts.append("MA5")
+        if cond_atr: debug_parts.append(f"ATR {atr_ratio*100:.1f}%")
+        if cond_base_b: debug_parts.append("BaseBOK")
+        
+        return is_soft_hit, hit_count, vol_ratio, "/".join(debug_parts)
+        
+    except: return False, 0, 0, "Error"
+
+# ==========================================
+# 5. 메인 로직 (Hard OR Soft)
+# ==========================================
 def run_logic():
-    print("🧠 [Brain] Hybrid Sniper V8.7 (Wide Net) 가동...")
+    print("🧠 [Brain] Hybrid Sniper V8.7 (Soft Momentum Layer) 가동...")
     
     universe = [
         "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NFLX", "TSLA", "NVDA", "AMD", "AVGO",
@@ -208,24 +259,24 @@ def run_logic():
     ]
 
     survivors = []
-    stats = {"HardCut": 0, "NotEnoughDrop": 0, "ReignitionPass": 0, "Error": 0, "Pass": 0}
+    stats = {"HardCut": 0, "NotEnoughDrop": 0, "Pass": 0, "HardHit": 0, "SoftHit": 0}
 
-    print(f"🔍 총 {len(universe)}개 종목 분석 중 (Filter Relaxed)...\n")
+    print(f"🔍 총 {len(universe)}개 종목 분석 중...\n")
 
     for i, sym in enumerate(universe):
         try:
             print(f"   Running.. [{i+1}/{len(universe)}] {sym:<5}", end="\r")
             t = yf.Ticker(sym)
             hist = t.history(period="1y")
-            if len(hist) < 120: 
-                stats["Error"] += 1
-                continue
+            if len(hist) < 120: continue
 
+            # 1. 기초 체력
             passed, reason = check_hard_cut(t, hist)
             if not passed:
                 stats["HardCut"] += 1
                 continue
 
+            # 2. 낙폭 (Tier)
             tier, drop_limit, vol_ratio, tier_label = calc_atr_and_tier(hist)
             high_120 = hist["High"].rolling(120).max().iloc[-1]
             cur = hist["Close"].iloc[-1]
@@ -235,58 +286,69 @@ def run_logic():
                 stats["NotEnoughDrop"] += 1
                 continue
 
-            # [V8.7 변경] Event Radar는 '필수'가 아니라 '정보'로 활용
-            is_event, vol_spike, move_pct = check_event_radar(hist)
-            
-            # 구조 분석 실행
-            reig = analyze_reignition_structure(hist)
+            # 3. 구조 분석 (RIB) - 먼저 계산
+            rib_data = analyze_reignition_structure(hist)
 
-            # [V8.7 핵심 필터]
-            # 1. 구조가 유의미(RADAR 이상)하면 무조건 통과 (조용한 바닥)
-            # 2. 또는 Event가 터졌으면(Vol Spike) 통과 (신규 폭락/급등)
-            is_structure_good = reig and reig['grade'] != 'IGNORE'
+            # 4. 레이더 가동 (Hard OR Soft)
+            is_hard_hit, hard_vol, hard_move = check_event_radar(hist)
+            is_soft_hit, soft_count, soft_vol, soft_msg = check_soft_radar(hist, rib_data)
             
-            if not is_structure_good and not is_event:
-                # 구조도 안 좋고, 이벤트도 없으면 탈락
-                continue
+            if not (is_hard_hit or is_soft_hit):
+                continue # 둘 다 아니면 탈락
 
+            # 최종 메시지 구성
+            radar_msg_list = []
+            if is_hard_hit: 
+                radar_msg_list.append(f"HARD Vol {hard_vol}x / Move {hard_move}%")
+                stats["HardHit"] += 1
+            if is_soft_hit:
+                radar_msg_list.append(f"SOFT {soft_count}/4 | {soft_msg}")
+                stats["SoftHit"] += 1
+            
+            final_radar_msg = " + ".join(radar_msg_list)
+            
             stats["Pass"] += 1
             is_etf = sym in ETF_LIST
             final_label = f"[ETF] {tier_label}" if is_etf else tier_label
-            
-            event_msg = ""
-            if is_event: event_msg = f"⚡Event: Vol {vol_spike}x"
             
             survivors.append({
                 "symbol": sym,
                 "price": round(cur, 2),
                 "dd": round(dd, 2),
                 "tier_label": final_label,
-                "radar_msg": event_msg, # 이벤트 있으면 메시지 표시
+                "radar_msg": final_radar_msg,
                 "name": t.info.get("shortName", sym),
-                "reignition": reig
+                "rib_data": rib_data,
+                "is_hard": is_hard_hit,
+                "is_soft": is_soft_hit,
+                "soft_count": soft_count
             })
 
         except Exception as e:
-            stats["Error"] += 1
             continue
 
+    # [정렬 로직 확장]
+    # 1순위: RIB Priority (ACTION > SETUP...), 2순위: Score, 3순위: HardHit우선, 4순위: SoftCount
     survivors.sort(key=lambda x: (
-        x['reignition'].get('priority', 99) if x['reignition'] else 99, 
-        -x['reignition'].get('score', 0) if x['reignition'] else 0
+        x['rib_data'].get('priority', 99) if x['rib_data'] else 99, 
+        -x['rib_data'].get('rib_score', 0) if x['rib_data'] else 0,
+        not x['is_hard'], # Hard hit 우선
+        -x['soft_count']
     ))
     
     print("\n" + "="*40)
     print(f"📊 [스캔 결과] 총 {len(universe)}개 중")
     print(f"   ❌ 기초체력 미달: {stats['HardCut']}")
     print(f"   📉 낙폭 조건 미달: {stats['NotEnoughDrop']}")
+    print(f"   ⚡ Hard Event Hit: {stats['HardHit']}")
+    print(f"   🌊 Soft Radar Hit: {stats['SoftHit']}")
     print(f"   ✅ 최종 후보군: {stats['Pass']}")
     print("="*40 + "\n")
     
     return survivors
 
 # ==========================================
-# 5. 뉴스 및 대시보드
+# 6. 뉴스 및 대시보드
 # ==========================================
 def calculate_relevance_score(title_en):
     score = 0
@@ -327,34 +389,34 @@ def generate_dashboard(targets):
     for stock in targets:
         sym = stock['symbol']
         chart_id = f"tv_{sym}"
-        reig = stock.get("reignition")
+        rib = stock.get("rib_data")
         
         structure_html = ""
         tm_html = ""
         
-        if reig and isinstance(reig, dict) and "status" in reig:
-            grade = reig.get('grade', 'IGNORE')
+        if rib and isinstance(rib, dict) and "status" in rib:
+            grade = rib.get('grade', 'IGNORE')
             grade_color = "#95a5a6"
             if grade == "ACTION": grade_color = "#e74c3c"
             elif grade == "SETUP": grade_color = "#e67e22"
             elif grade == "RADAR": grade_color = "#f1c40f"
             
-            status_badge = f"<span class='struct-badge' style='background:{grade_color}'>{grade} : {reig.get('status')}</span>"
-            trigger_msg = reig.get('trigger_msg', '')
+            status_badge = f"<span class='struct-badge' style='background:{grade_color}'>{grade} : {rib.get('status')}</span>"
+            trigger_msg = rib.get('trigger_msg', '')
             
             trigger_html = ""
             if trigger_msg:
                 trigger_html = f"<div class='trigger-msg'>💡 {trigger_msg}</div>"
 
-            base_a = reig.get('base_a', 0)
-            pivot = reig.get('pivot', 0)
-            base_b = reig.get('base_b', 0)
+            base_a = rib.get('base_a', 0)
+            pivot = rib.get('pivot', 0)
+            base_b = rib.get('base_b', 0)
             
-            if "INVALID" not in reig.get('status', 'INVALID'):
+            if "INVALID" not in rib.get('status', 'INVALID'):
                 structure_html = f"""
                 <div class="structure-box {grade.lower()}">
                     <div class="struct-header">
-                        <span class="struct-title">⚔️ Tactical Analysis</span>
+                        <span class="struct-title">⚔️ Re-Ignition Break Pattern</span>
                         {status_badge}
                     </div>
                     {trigger_html}
@@ -375,7 +437,7 @@ def generate_dashboard(targets):
                         </div>
                     </div>
                     <div class="struct-footer">
-                        <span>Gap to Breakout: <strong>{reig.get('distance', 0):.1f}%</strong> (Score: {reig.get('score')})</span>
+                        <span>Gap to Breakout: <strong>{rib.get('distance', 0):.1f}%</strong> (RIB Score: {rib.get('rib_score')})</span>
                     </div>
                 </div>
                 """
@@ -388,8 +450,8 @@ def generate_dashboard(targets):
                         return f"https://www.google.com/search?q={sym}+stock+news&tbs=cdr:1,cd_min:{start},cd_max:{end}&tbm=nws"
                     except: return "#"
                 
-                crash_url = make_google_url(sym, reig.get('base_a_date', ''))
-                rebound_url = make_google_url(sym, reig.get('base_b_date', ''))
+                crash_url = make_google_url(sym, rib.get('base_a_date', ''))
+                rebound_url = make_google_url(sym, rib.get('base_b_date', ''))
                 
                 tm_html = f"""
                 <div class="timemachine-box">
@@ -408,7 +470,7 @@ def generate_dashboard(targets):
                 <div class="structure-box invalid">
                     <div class="struct-header">
                         <span class="struct-title">⚠️ 구조 미형성</span>
-                        <span class="struct-badge" style="background:#7f8c8d">{reig.get('status')}</span>
+                        <span class="struct-badge" style="background:#7f8c8d">{rib.get('status')}</span>
                     </div>
                 </div>
                 """
@@ -437,7 +499,7 @@ def generate_dashboard(targets):
         is_etf = "[ETF]" in tier_label
         badge_bg = "#8e44ad" if is_etf else "#2c3e50"
         tier_badge = f"<span class='badge' style='background:{badge_bg}; color:#ecf0f1;'>{tier_label}</span>" if tier_label else ""
-        radar_badge = f"<span class='badge' style='background:rgba(242, 54, 69, 0.15); color:#f23645;'>{radar_msg}</span>" if radar_msg else ""
+        radar_badge = f"<span class='badge' style='background:rgba(242, 54, 69, 0.15); color:#f23645; font-size:0.75em;'>{radar_msg}</span>" if radar_msg else ""
 
         html_cards += f"""
         <div class="card">
@@ -449,12 +511,12 @@ def generate_dashboard(targets):
                 <div class="stock-metrics">
                     <span class="price">${stock['price']:.2f}</span>
                     {tier_badge}
-                    {radar_badge}
                 </div>
             </div>
             <div class="card-body">
                 <div class="left-section">
                     {structure_html}
+                    <div style="margin-bottom:10px;">{radar_badge}</div>
                     <div class="news-section">
                         <h4>📰 최신 뉴스 & AI 태그</h4>
                         <div class="news-list">{news_html}</div>
@@ -484,7 +546,7 @@ def generate_dashboard(targets):
     <html>
     <head>
         <meta charset="utf-8">
-        <title>Hybrid Sniper V8.7 (Wide Net)</title>
+        <title>Hybrid Sniper V8.7 (Soft Momentum)</title>
         <style>
             :root {{
                 --bg-color: #131722; --card-bg: #1e222d; --text-main: #d1d4dc;
@@ -501,10 +563,10 @@ def generate_dashboard(targets):
             .price {{ font-size: 1.5em; font-weight: 600; color: #fff; margin-right: 15px; }}
             .badge {{ padding: 5px 10px; border-radius: 4px; font-weight: bold; font-size: 0.8em; margin-left: 5px; border: 1px solid #444; }}
             
-            .card-body {{ display: flex; flex-wrap: wrap; height: 600px; }}
+            .card-body {{ display: flex; flex-wrap: wrap; height: 650px; }}
             .left-section {{ flex: 1; min-width: 350px; padding: 20px; border-right: 1px solid var(--border-color); display: flex; flex-direction: column; }}
             
-            .structure-box {{ background: #262b3e; border-radius: 6px; padding: 15px; margin-bottom: 15px; border: 1px solid #363c4e; }}
+            .structure-box {{ background: #262b3e; border-radius: 6px; padding: 15px; margin-bottom: 10px; border: 1px solid #363c4e; }}
             .structure-box.action {{ border: 1px solid #e74c3c; background: rgba(231, 76, 60, 0.1); }}
             .structure-box.setup {{ border: 1px solid #e67e22; background: rgba(230, 126, 34, 0.1); }}
             .structure-box.invalid {{ opacity: 0.5; }}
@@ -545,7 +607,7 @@ def generate_dashboard(targets):
     </head>
     <body>
         <div class="container">
-            <h1>SNIPER V8.7 <span style="font-size:0.5em; color:#e67e22;">WIDE NET</span></h1>
+            <h1>SNIPER V8.7 <span style="font-size:0.5em; color:#2980b9;">SOFT MOMENTUM</span></h1>
             {html_cards}
         </div>
     </body>
