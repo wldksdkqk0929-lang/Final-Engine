@@ -31,7 +31,7 @@ except ImportError:
 ETF_LIST = ["TQQQ", "SQQQ", "SOXL", "SOXS", "TSLL", "NVDL", "LABU", "LABD"]
 
 # ==========================================
-# 2. V8.6 핵심: 재점화 구조 엔진 + 전술 레이어
+# 2. V8.7 핵심: 재점화 구조 엔진 (로직 유지)
 # ==========================================
 def analyze_reignition_structure(hist):
     try:
@@ -72,7 +72,7 @@ def analyze_reignition_structure(hist):
         if current_price < base_b_price:
             return {"status": "INVALID (B Broken)", "score": 0, "grade": "IGNORE", "priority": 99}
 
-        # [V8.6] 전술 등급 및 트리거 문구 생성
+        # 전술 등급 산정
         if pivot_price == 0: dist_pct = 0
         else: dist_pct = (pivot_price - current_price) / pivot_price * 100
         
@@ -83,36 +83,35 @@ def analyze_reignition_structure(hist):
         trigger_msg = ""
         score = 50
 
-        # Higher Low 보너스
-        if base_b_price > base_a_price * 1.05: score += 10
+        if base_b_price > base_a_price * 1.05: score += 10 # Higher Low 보너스
 
         if current_price > pivot_price:
             status = "🔥 BREAKOUT"
             grade = "ACTION"
             badge_color = "#e74c3c" # Red
             priority = 1
-            trigger_msg = "Pivot 돌파 확인. 눌림목(Pullback) 또는 분할 진입 검토."
+            trigger_msg = "Pivot 돌파 확인. 즉시 진입 검토."
             score += 40
         elif dist_pct <= 3.0:
             status = "🚀 READY"
             grade = "SETUP"
             badge_color = "#e67e22" # Orange
             priority = 2
-            trigger_msg = f"Pivot까지 {dist_pct:.1f}% 남음. 장중 돌파 및 거래량 주시."
+            trigger_msg = f"Pivot까지 {dist_pct:.1f}% 남음. 대기."
             score += 30
         elif dist_pct <= 8.0:
             status = "👀 WATCH"
             grade = "RADAR"
             badge_color = "#f1c40f" # Yellow
             priority = 3
-            trigger_msg = f"구조 형성 중. Pivot 접근 여부 지속 관찰 (Gap {dist_pct:.1f}%)."
+            trigger_msg = f"구조 관찰 중 (Gap {dist_pct:.1f}%)."
             score += 10
         else:
             status = "💤 EARLY"
             grade = "IGNORE"
             badge_color = "#95a5a6" # Grey
             priority = 4
-            trigger_msg = "아직 이격도가 큼. 관망 필요."
+            trigger_msg = "이격도 큼."
 
         return {
             "base_a": base_a_price, "base_a_date": base_a_date,
@@ -131,7 +130,7 @@ def analyze_reignition_structure(hist):
         return None
 
 # ==========================================
-# 3. 뉴스 구조 분석 (V8.0 유지)
+# 3. 뉴스 구조 분석
 # ==========================================
 def analyze_news_structure(title_en):
     title_lower = title_en.lower()
@@ -151,15 +150,17 @@ def analyze_news_structure(title_en):
     return tags
 
 # ==========================================
-# 4. 메인 로직 (자동 정렬 추가)
+# 4. 메인 로직 [V8.7: Wide Net 확장]
 # ==========================================
 def check_hard_cut(ticker, hist):
     try:
         try: market_cap = ticker.fast_info['market_cap']
         except: market_cap = ticker.info.get("marketCap", 0) or 0
         avg_dollar_vol = (hist["Close"] * hist["Volume"]).rolling(20).mean().iloc[-1]
-        if market_cap < 2_000_000_000: return False, "Small Cap"
-        if avg_dollar_vol < 20_000_000: return False, "Low Liquidity"
+        
+        # [V8.7 완화] Cap $2B -> $1B, Vol $20M -> $10M
+        if market_cap < 1_000_000_000: return False, "Small Cap"
+        if avg_dollar_vol < 10_000_000: return False, "Low Liquidity"
         return True, "Pass"
     except: return False, "Data Error"
 
@@ -173,9 +174,12 @@ def calc_atr_and_tier(hist):
     cur_price = close.iloc[-1]
     if cur_price == 0: return 3, -35, 0, "Error"
     vol_ratio = atr / cur_price
-    if vol_ratio < 0.025: return 1, -15, round(vol_ratio * 100, 2), "Tier 1 (Safe)"
-    elif vol_ratio < 0.05: return 2, -25, round(vol_ratio * 100, 2), "Tier 2 (Growth)"
-    else: return 3, -35, round(vol_ratio * 100, 2), "Tier 3 (Volatile)"
+
+    # [V8.7 완화] 낙폭 기준 완화 (조금 덜 빠져도 구조 좋으면 통과)
+    # Tier 1: -10%, Tier 2: -20%, Tier 3: -30%
+    if vol_ratio < 0.025: return 1, -10, round(vol_ratio * 100, 2), "Tier 1 (Safe)"
+    elif vol_ratio < 0.05: return 2, -20, round(vol_ratio * 100, 2), "Tier 2 (Growth)"
+    else: return 3, -30, round(vol_ratio * 100, 2), "Tier 3 (Volatile)"
 
 def check_event_radar(hist):
     try:
@@ -192,7 +196,7 @@ def check_event_radar(hist):
     except: return False, 0, 0
 
 def run_logic():
-    print("🧠 [Brain] Hybrid Sniper V8.6 (Tactical Layer) 가동...")
+    print("🧠 [Brain] Hybrid Sniper V8.7 (Wide Net) 가동...")
     
     universe = [
         "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NFLX", "TSLA", "NVDA", "AMD", "AVGO",
@@ -204,9 +208,9 @@ def run_logic():
     ]
 
     survivors = []
-    stats = {"HardCut": 0, "NotEnoughDrop": 0, "NoEvent": 0, "Error": 0, "Pass": 0}
+    stats = {"HardCut": 0, "NotEnoughDrop": 0, "ReignitionPass": 0, "Error": 0, "Pass": 0}
 
-    print(f"🔍 총 {len(universe)}개 종목 분석 중...\n")
+    print(f"🔍 총 {len(universe)}개 종목 분석 중 (Filter Relaxed)...\n")
 
     for i, sym in enumerate(universe):
         try:
@@ -231,35 +235,42 @@ def run_logic():
                 stats["NotEnoughDrop"] += 1
                 continue
 
-            is_hit, vol_spike, move_pct = check_event_radar(hist)
-            if not is_hit:
-                stats["NoEvent"] += 1
-                continue
+            # [V8.7 변경] Event Radar는 '필수'가 아니라 '정보'로 활용
+            is_event, vol_spike, move_pct = check_event_radar(hist)
             
-            reignition_data = analyze_reignition_structure(hist)
+            # 구조 분석 실행
+            reig = analyze_reignition_structure(hist)
+
+            # [V8.7 핵심 필터]
+            # 1. 구조가 유의미(RADAR 이상)하면 무조건 통과 (조용한 바닥)
+            # 2. 또는 Event가 터졌으면(Vol Spike) 통과 (신규 폭락/급등)
+            is_structure_good = reig and reig['grade'] != 'IGNORE'
+            
+            if not is_structure_good and not is_event:
+                # 구조도 안 좋고, 이벤트도 없으면 탈락
+                continue
 
             stats["Pass"] += 1
             is_etf = sym in ETF_LIST
             final_label = f"[ETF] {tier_label}" if is_etf else tier_label
             
-            print(f"🎯 [HIT] {sym} 포착! ({final_label})")
+            event_msg = ""
+            if is_event: event_msg = f"⚡Event: Vol {vol_spike}x"
             
             survivors.append({
                 "symbol": sym,
                 "price": round(cur, 2),
                 "dd": round(dd, 2),
                 "tier_label": final_label,
-                "radar_msg": f"Vol {vol_spike}x / Move {move_pct}%",
+                "radar_msg": event_msg, # 이벤트 있으면 메시지 표시
                 "name": t.info.get("shortName", sym),
-                "reignition": reignition_data
+                "reignition": reig
             })
 
         except Exception as e:
             stats["Error"] += 1
             continue
 
-    # [V8.6 핵심] 전술적 우선순위 정렬 (ACTION -> SETUP -> RADAR -> IGNORE -> Score순)
-    # priority가 낮을수록(1) 상단, score가 높을수록 상단
     survivors.sort(key=lambda x: (
         x['reignition'].get('priority', 99) if x['reignition'] else 99, 
         -x['reignition'].get('score', 0) if x['reignition'] else 0
@@ -267,13 +278,15 @@ def run_logic():
     
     print("\n" + "="*40)
     print(f"📊 [스캔 결과] 총 {len(universe)}개 중")
-    print(f"   ✅ 최종 포착: {stats['Pass']}")
+    print(f"   ❌ 기초체력 미달: {stats['HardCut']}")
+    print(f"   📉 낙폭 조건 미달: {stats['NotEnoughDrop']}")
+    print(f"   ✅ 최종 후보군: {stats['Pass']}")
     print("="*40 + "\n")
     
     return survivors
 
 # ==========================================
-# 5. 뉴스 및 대시보드 (V8.6 전술 UI)
+# 5. 뉴스 및 대시보드
 # ==========================================
 def calculate_relevance_score(title_en):
     score = 0
@@ -320,7 +333,6 @@ def generate_dashboard(targets):
         tm_html = ""
         
         if reig and isinstance(reig, dict) and "status" in reig:
-            # [V8.6] 전술 등급 배지 & 트리거 문구
             grade = reig.get('grade', 'IGNORE')
             grade_color = "#95a5a6"
             if grade == "ACTION": grade_color = "#e74c3c"
@@ -334,7 +346,6 @@ def generate_dashboard(targets):
             if trigger_msg:
                 trigger_html = f"<div class='trigger-msg'>💡 {trigger_msg}</div>"
 
-            # 상세 수치
             base_a = reig.get('base_a', 0)
             pivot = reig.get('pivot', 0)
             base_b = reig.get('base_b', 0)
@@ -473,7 +484,7 @@ def generate_dashboard(targets):
     <html>
     <head>
         <meta charset="utf-8">
-        <title>Hybrid Sniper V8.6 (Tactical Layer)</title>
+        <title>Hybrid Sniper V8.7 (Wide Net)</title>
         <style>
             :root {{
                 --bg-color: #131722; --card-bg: #1e222d; --text-main: #d1d4dc;
@@ -493,7 +504,6 @@ def generate_dashboard(targets):
             .card-body {{ display: flex; flex-wrap: wrap; height: 600px; }}
             .left-section {{ flex: 1; min-width: 350px; padding: 20px; border-right: 1px solid var(--border-color); display: flex; flex-direction: column; }}
             
-            /* Tactical Structure Box */
             .structure-box {{ background: #262b3e; border-radius: 6px; padding: 15px; margin-bottom: 15px; border: 1px solid #363c4e; }}
             .structure-box.action {{ border: 1px solid #e74c3c; background: rgba(231, 76, 60, 0.1); }}
             .structure-box.setup {{ border: 1px solid #e67e22; background: rgba(230, 126, 34, 0.1); }}
@@ -535,7 +545,7 @@ def generate_dashboard(targets):
     </head>
     <body>
         <div class="container">
-            <h1>SNIPER V8.6 <span style="font-size:0.5em; color:#e74c3c;">TACTICAL</span></h1>
+            <h1>SNIPER V8.7 <span style="font-size:0.5em; color:#e67e22;">WIDE NET</span></h1>
             {html_cards}
         </div>
     </body>
@@ -552,4 +562,4 @@ if __name__ == "__main__":
         print("💡 결과가 0개입니다. 더미 리포트를 생성합니다.")
         targets = [{"symbol": "NO-TARGETS", "price": 0.00, "dd": 0.00, "name": "탐지된 종목이 없습니다", "tier_label": "System Info", "radar_msg": "Universe scanned"}]
     generate_dashboard(targets)
-    print(f"\n✅ V8.6 작전 완료.")
+    print(f"\n✅ V8.7 작전 완료.")
