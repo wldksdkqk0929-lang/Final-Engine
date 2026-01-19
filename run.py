@@ -45,29 +45,22 @@ PIPELINE_STATS = {
     "gate2_pass": 0,
     "gate3_dd_pass": 0,
     "rib_final_pass": 0,
+    "news_scanned": 0,
     "start_time": time.time(),
     "end_time": 0
 }
 
 # ---------------------------------------------------------
-# ⚙️ V11.3 설정 (Engine V11.1 + Gate2 Fix)
+# ⚙️ V11.4 설정 (News Reactivated)
 # ---------------------------------------------------------
-# [Universe]
-TARGET_LIQUID_COUNT = 1200      # 유동성 확보 목표치
-FINAL_UNIVERSE_SIZE = 800       # 최종 선발
-
-# [Gate 1: Ultra Light]
+TARGET_LIQUID_COUNT = 1200
+FINAL_UNIVERSE_SIZE = 800
 G1_MIN_PRICE = 5.0
 G1_MIN_DOL_VOL = 8_000_000
-
-# [Gate 2: Fast Technical]
-G2_MIN_DD_60 = -6.0             # -6% 이하 하락
-G2_MAX_REC_60 = 0.98            # 또는 98% 이하 회복 (OR 조건 적용 예정)
-
-# [Gate 3: Hard Gate]
-G3_MAX_DD_252 = -12.0           
-CUTOFF_SCORE = 40               
-# ---------------------------------------------------------
+G2_MIN_DD_60 = -6.0
+G2_MAX_REC_60 = 0.98
+G3_MAX_DD_252 = -12.0
+CUTOFF_SCORE = 40
 
 ETF_LIST = ["TQQQ", "SQQQ", "SOXL", "SOXS", "TSLL", "NVDL", "LABU", "LABD", "UVXY", "SPY", "QQQ", "IWM"]
 CORE_WATCHLIST = [
@@ -76,7 +69,7 @@ CORE_WATCHLIST = [
 ]
 
 # ==========================================
-# 1. Universe Builder (Robust Loop)
+# 1. Universe Builder
 # ==========================================
 def fetch_us_market_symbols():
     symbols = set()
@@ -108,15 +101,13 @@ def fetch_us_market_symbols():
 def build_initial_universe():
     candidates = fetch_us_market_symbols()
     candidates = list(set(candidates + CORE_WATCHLIST))
-    
     print_status(f"   📋 Raw Pool: {len(candidates)}개 -> 유동성 타겟 {TARGET_LIQUID_COUNT}개 확보 시작")
     
     scan_pool = list(set(candidates) - set(CORE_WATCHLIST))
     random.shuffle(scan_pool)
-    
     liquidity_scores = []
     
-    # Core 처리
+    # Core Scan
     try:
         core_data = yf.download(CORE_WATCHLIST, period="5d", group_by='ticker', threads=True, progress=False)
         for sym in CORE_WATCHLIST:
@@ -128,15 +119,13 @@ def build_initial_universe():
             except: pass
     except: pass
 
-    # Pool Loop
+    # Pool Scan Loop
     chunk_size = 200
     pool_idx = 0
-    
     while len(liquidity_scores) < TARGET_LIQUID_COUNT and pool_idx < len(scan_pool):
         chunk = scan_pool[pool_idx : pool_idx + chunk_size]
         pool_idx += chunk_size
         if not chunk: break
-        
         try:
             data = yf.download(chunk, period="5d", group_by='ticker', threads=True, progress=False)
             if isinstance(data.columns, pd.MultiIndex):
@@ -162,18 +151,16 @@ def build_initial_universe():
         
     final_universe = list(set(top_600 + random_200 + CORE_WATCHLIST))
     PIPELINE_STATS["universe_actual"] = len(final_universe)
-    
     print(f"\n✅ [Phase 1 Complete] Universe 확정: {len(final_universe)}개 (목표: {FINAL_UNIVERSE_SIZE})")
     return final_universe
 
 # ==========================================
-# 2. Gate Engines (Gate 2 Logic Fixed)
+# 2. Gate Engines
 # ==========================================
 def apply_gate_1_light(universe):
     print_status("🛡️ [Gate 1] Price/Vol Check (5D)...")
     survivors = []
     batch_size = 100
-    
     for i in range(0, len(universe), batch_size):
         batch = universe[i:i+batch_size]
         try:
@@ -194,16 +181,14 @@ def apply_gate_1_light(universe):
                     if data['Close'].mean() >= G1_MIN_PRICE and (data['Close']*data['Volume']).mean() >= G1_MIN_DOL_VOL:
                         survivors.append(batch[0])
         except: continue
-        
     PIPELINE_STATS["gate1_pass"] = len(survivors)
     print(f"   ➡️ Gate 1 Passed: {len(survivors)}")
     return survivors
 
 def apply_gate_2_fast_tech(universe):
-    print_status("🛡️ [Gate 2] Fast Technical (60D) - OR Logic...")
+    print_status("🛡️ [Gate 2] Fast Technical (60D)...")
     survivors = []
     batch_size = 100
-    
     for i in range(0, len(universe), batch_size):
         batch = universe[i:i+batch_size]
         try:
@@ -223,29 +208,23 @@ def apply_gate_2_fast_tech(universe):
                     high_60 = df['High'].max()
                     cur_price = df['Close'].iloc[-1]
                     if high_60 == 0: continue
-                    
                     dd_60 = ((cur_price - high_60) / high_60) * 100
                     rec_ratio = cur_price / high_60
-                    
-                    # [CRITICAL FIX] AND -> OR condition
-                    # 낙폭이 충분하거나(-6% 이하), OR 아직 과열되지 않았거나(98% 이하)
                     if dd_60 <= G2_MIN_DD_60 or rec_ratio <= G2_MAX_REC_60:
                         survivors.append(sym)
                 except: continue
         except: continue
-        
     PIPELINE_STATS["gate2_pass"] = len(survivors)
     print(f"   ➡️ Gate 2 Passed: {len(survivors)}")
     return survivors
 
 # ==========================================
-# 3. RIB V2 (Relaxed)
+# 3. RIB V2 & News Engine (Reactivated)
 # ==========================================
 def analyze_rib_structure(hist):
     try:
         recent = hist.tail(120).copy()
         current_price = recent["Close"].iloc[-1]
-        
         base_a_idx = recent["Close"].idxmin()
         base_a_price = recent.loc[base_a_idx]["Close"]
         
@@ -285,25 +264,109 @@ def analyze_rib_structure(hist):
         else: grade = "IGNORE"
         
         comps = {"struct": int(ratio*10), "comp": 10, "prox": int(30-dist_pct), "risk": 10}
+        
+        # Peak Date Logic for News
+        pre_base_a = hist.loc[:base_a_idx]
+        if not pre_base_a.empty:
+            peak_idx = pre_base_a["High"].tail(252).idxmax()
+            peak_date = peak_idx.strftime("%Y-%m-%d")
+        else:
+            peak_date = (base_a_idx - timedelta(days=60)).strftime("%Y-%m-%d")
 
         return {
             "grade": grade, "rib_score": score, 
-            "base_a": base_a_price, "base_b": base_b_price, "pivot": pivot_price,
+            "base_a": base_a_price, "base_a_date": base_a_idx.strftime("%Y-%m-%d"),
+            "base_b": base_b_price, "base_b_date": base_b_idx.strftime("%Y-%m-%d"),
+            "pivot": pivot_price, "peak_date": peak_date,
             "trigger_msg": f"Gap {dist_pct:.1f}%", "components": comps
         }
     except: return None
 
-def analyze_narrative(symbol):
-    return {"narrative_score": 50, "status_label": "Info", "drop_news": [], "recovery_news": []}
+# [News Logic - Reactivated]
+def translate_cached(text, translator):
+    if text in TRANSLATION_CACHE: return TRANSLATION_CACHE[text]
+    try:
+        res = translator.translate(text)
+        TRANSLATION_CACHE[text] = res
+        return res
+    except: return text
+
+def classify_news(title, n_type):
+    t_low = title.lower()
+    if n_type == "DROP":
+        if any(k in t_low for k in ['fraud', 'sec', 'probe', 'lawsuit', 'delist', 'scandal']): return "🔴 Structural Risk", "risk", 30
+        if any(k in t_low for k in ['miss', 'earnings', 'revenue', 'guidance', 'cut', 'plunge']): return "📉 Event Shock", "event", 20
+        return "📉 Drop Factor", "event", 10
+    else:
+        if any(k in t_low for k in ['upgrade', 'beat', 'raise', 'partnership', 'record', 'soar']): return "🟢 Recovery Signal", "good", 30
+        if any(k in t_low for k in ['fall', 'drop', 'cut', 'sell']): return "⚠️ Lingering Risk", "bad", -10
+        return "⚖️ General", "neutral", 0
+
+def fetch_news(symbol, start, end, n_type):
+    items = []
+    try:
+        # RSS Query: Simple
+        url = f"https://news.google.com/rss/search?q={symbol}+stock&hl=en-US&gl=US&ceid=US:en"
+        resp = requests.get(url, timeout=4) # Short timeout
+        if resp.status_code == 200:
+            root = ET.fromstring(resp.content)
+            translator = GoogleTranslator(source='auto', target='ko')
+            t_start = datetime.strptime(start, "%Y-%m-%d")
+            t_end = datetime.strptime(end, "%Y-%m-%d") if end else datetime.now()
+            
+            count = 0
+            for item in root.findall('./channel/item')[:20]: # Check top 20
+                try:
+                    pDate = datetime.strptime(item.find('pubDate').text[:16], "%a, %d %b %Y")
+                    # Date Filter
+                    if not (t_start <= pDate <= t_end + timedelta(days=1)): continue
+                    
+                    title = item.find('title').text.rsplit(" - ", 1)[0]
+                    link = item.find('link').text
+                    
+                    # Duplicate check
+                    if any(x['title'] == title for x in items): continue
+                    
+                    t_ko = translate_cached(title, translator)
+                    cat, c_type, w = classify_news(title, n_type)
+                    
+                    items.append({"title": title, "title_ko": t_ko, "link": link, "date": pDate.strftime("%Y-%m-%d"), "category": cat, "type": c_type, "weight": w})
+                    count += 1
+                    if count >= 3: break # Max 3 items per type
+                except: continue
+    except: pass
+    return items
+
+def analyze_narrative(symbol, rib_data):
+    # [Smart Execution] Only scan news for ACTION/SETUP to save time
+    if rib_data['grade'] not in ['ACTION', 'SETUP']:
+        return {"narrative_score": 0, "status_label": "Skipped (Low Tier)", "drop_news": [], "recovery_news": []}
+    
+    PIPELINE_STATS["news_scanned"] += 1
+    try:
+        # Drop News: Peak -> Base A + 5d
+        drop_end = (datetime.strptime(rib_data['base_a_date'], "%Y-%m-%d") + timedelta(days=5)).strftime("%Y-%m-%d")
+        d_news = fetch_news(symbol, rib_data['peak_date'], drop_end, "DROP")
+        
+        # Recovery News: Base B -> Now
+        r_news = fetch_news(symbol, rib_data['base_b_date'], None, "RECOVERY")
+        
+        d_score = sum(n['weight'] for n in d_news)
+        r_score = sum(n['weight'] for n in r_news)
+        total = min(50, d_score) + min(50, r_score)
+        
+        lbl = f"🔥 Strong ({total})" if total >= 50 else f"⚖️ Neutral ({total})"
+        return {"narrative_score": int(total), "status_label": lbl, "drop_news": d_news, "recovery_news": r_news}
+    except: 
+        return {"narrative_score": 0, "status_label": "Error", "drop_news": [], "recovery_news": []}
 
 # ==========================================
-# 4. Final Pipeline (Gate 3 & RIB)
+# 4. Final Pipeline
 # ==========================================
 def apply_gate_3_and_rib(universe):
     print_status("🛡️ [Gate 3 & RIB] Deep Analysis (1Y Data)...")
     survivors = []
     batch_size = 50 
-    
     for i in range(0, len(universe), batch_size):
         batch = universe[i:i+batch_size]
         try:
@@ -330,10 +393,10 @@ def apply_gate_3_and_rib(universe):
                     rib_data = analyze_rib_structure(df)
                     if not rib_data: continue
                     if rib_data['rib_score'] < CUTOFF_SCORE: continue
-                    
                     PIPELINE_STATS["rib_final_pass"] += 1
-                    narr = analyze_narrative(sym)
                     
+                    # [Fix] Pass full rib_data for date logic
+                    narr = analyze_narrative(sym, rib_data)
                     survivors.append({
                         "symbol": sym, "price": round(cur, 2), "dd": round(dd_252, 2),
                         "rib_data": rib_data, "narrative": narr
@@ -346,7 +409,7 @@ def apply_gate_3_and_rib(universe):
     return survivors
 
 # ==========================================
-# 5. Dashboard Generation (UI V11.2)
+# 5. Dashboard Generation (UI V11.2 + News Rendering)
 # ==========================================
 def generate_dashboard(targets):
     action = [s for s in targets if s['rib_data']['grade'] in ['ACTION', 'SETUP']]
@@ -358,8 +421,27 @@ def generate_dashboard(targets):
         rib = stock.get("rib_data")
         narr = stock.get("narrative", {})
         
-        drop_html = "<div class='empty-msg'>📉 (Data Skipped for Speed)</div>"
-        rec_html = "<div class='empty-msg'>🌱 (Data Skipped for Speed)</div>"
+        # [Fix] Real News Rendering
+        if narr.get('drop_news'):
+            drop_html = ""
+            for n in narr['drop_news']:
+                tag_c = "#c0392b" if n['type'] == 'risk' else "#e67e22"
+                drop_html += f"<div class='news-item'><span class='news-tag' style='background:{tag_c}'>{n['category']}</span><a href='{n['link']}' target='_blank'>{n['title_ko']}</a></div>"
+        else: 
+            drop_html = "<div class='empty-msg'>📉 No significant drop news found</div>"
+
+        if narr.get('recovery_news'):
+            rec_html = ""
+            for n in narr['recovery_news']:
+                tag_c = "#27ae60" if n['type'] == 'good' else "#7f8c8d"
+                rec_html += f"<div class='news-item'><span class='news-tag' style='background:{tag_c}'>{n['category']}</span><a href='{n['link']}' target='_blank'>{n['title_ko']}</a></div>"
+        else:
+            rec_html = "<div class='empty-msg'>🌱 No significant recovery news found</div>"
+
+        # Skipped Logic Display
+        if "Skipped" in narr.get('status_label', ''):
+            drop_html = "<div class='empty-msg'>Measurement Skipped (Low Tier)</div>"
+            rec_html = "<div class='empty-msg'>Measurement Skipped (Low Tier)</div>"
 
         chart_id = f"tv_{sym}_{random.randint(1000,9999)}"
         grade = rib.get("grade", "N/A")
@@ -428,7 +510,7 @@ def generate_dashboard(targets):
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>SNIPER V11.3 Integrated</title>
+        <title>SNIPER V11.4 News Active</title>
         <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
         <script>
             function copySymbols(text, btn) {{
@@ -490,13 +572,9 @@ def generate_dashboard(targets):
                 .container {{ padding: 10px; }}
                 h1 {{ font-size: 1.5rem; }}
                 .stats-bar {{ font-size: 0.8rem; overflow-x: scroll; }}
-                
-                /* Switch to Vertical Stack */
                 .card-body-grid {{ grid-template-columns: 1fr; height: auto; display: block; }}
-                
                 .col-drop, .col-rec {{ height: auto; max-height: 150px; border-right: none; border-bottom: 1px solid var(--border-color); }}
                 .col-chart {{ border-right: none; border-bottom: 1px solid var(--border-color); }}
-                
                 .tradingview-widget-container {{ height: 250px; }}
                 .rib-stat-box {{ padding: 15px; }}
             }}
@@ -504,12 +582,13 @@ def generate_dashboard(targets):
     </head>
     <body>
         <div class="container">
-            <h1>SNIPER V11.3 <span style="font-size:0.6em; color:#777;">INTEGRATED FINAL</span></h1>
+            <h1>SNIPER V11.4 <span style="font-size:0.6em; color:#777;">NEWS REACTIVATED</span></h1>
             
             <div class="stats-bar">
                 Target: {PIPELINE_STATS['universe_target']} | Actual: {PIPELINE_STATS['universe_actual']} | 
-                G1 Pass: {PIPELINE_STATS['gate1_pass']} | G2 Pass: {PIPELINE_STATS['gate2_pass']} | 
-                DD Pass: {PIPELINE_STATS['gate3_dd_pass']} | Final RIB: {PIPELINE_STATS['rib_final_pass']}
+                G1: {PIPELINE_STATS['gate1_pass']} | G2: {PIPELINE_STATS['gate2_pass']} | 
+                DD: {PIPELINE_STATS['gate3_dd_pass']} | RIB: {PIPELINE_STATS['rib_final_pass']} |
+                News: {PIPELINE_STATS['news_scanned']}
             </div>
             
             <details open>
@@ -555,7 +634,7 @@ def generate_dashboard(targets):
 # ==========================================
 if __name__ == "__main__":
     try:
-        print_status("🚀 SNIPER V11.3 Integrated Engine Start...")
+        print_status("🚀 SNIPER V11.4 News Reactivated Start...")
         
         # 1. Universe
         universe = build_initial_universe()
@@ -564,7 +643,7 @@ if __name__ == "__main__":
         survivors_g1 = apply_gate_1_light(universe)
         if not survivors_g1: raise Exception("Gate 1 Kill All")
         
-        # 3. Gate 2 (Fast Tech - OR Logic)
+        # 3. Gate 2 (Fast Tech)
         survivors_g2 = apply_gate_2_fast_tech(survivors_g1)
         if not survivors_g2: raise Exception("Gate 2 Kill All")
         
