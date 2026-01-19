@@ -40,21 +40,20 @@ except ImportError:
 TRANSLATION_CACHE = {}
 
 # ---------------------------------------------------------
-# ⚙️ V10.6 설정 (Hard Gate & Logic Config)
+# ⚙️ V10.7 설정 (Hard Gate Refined)
 # ---------------------------------------------------------
-# [1] Universe Construction
-UNIVERSE_TOP_FIXED = 150        # 유동성 최상위 고정 선발
-UNIVERSE_RANDOM = 200           # 차상위 그룹 랜덤 선발
-LIQUIDITY_LOOKBACK_DAYS = 5     # 유동성/가격 확인용 조회 기간
+# [1] Universe Basic
+UNIVERSE_TOP_FIXED = 150
+UNIVERSE_RANDOM = 200
 
-# [2] Hard Gate Filters (진입 장벽)
-MIN_PRICE = 4.0                 # 최소 주가 ($4.0)
-MIN_AVG_DOLLAR_VOLUME = 5_000_000 # 최소 일평균 거래대금 ($5M)
+# [2] TURNAROUND HARD GATE (Entry Barriers)
+GATE_MIN_PRICE = 4.0            # 최소 주가 $4.0
+GATE_MIN_DOL_VOL = 5_000_000    # 최소 거래대금 $5M
+GATE_MAX_DD_252 = -25.0         # 1년 고점 대비 최소 -25% 하락 필수 (성장주 차단)
+GATE_MAX_REC_60 = 0.90          # 60일 고점 대비 90% 이하 위치 (단기 과열/V반등 완료 차단)
 
 # [3] Analysis Filters
 CUTOFF_SCORE = 65               # RIB Score 최소 컷
-CUTOFF_DEEP_DROP = -55          # 지하실 컷 (-55% 이하 탈락)
-NEWS_SCAN_THRESHOLD = 75        # 뉴스 정밀 분석 트리거 점수
 # ---------------------------------------------------------
 
 ETF_LIST = ["TQQQ", "SQQQ", "SOXL", "SOXS", "TSLL", "NVDL", "LABU", "LABD"]
@@ -64,7 +63,7 @@ CORE_WATCHLIST = [
 ]
 
 # ==========================================
-# 1. Universe Builder (Hard Gate Applied)
+# 1. Universe Builder
 # ==========================================
 def fetch_us_market_symbols():
     symbols = set()
@@ -89,41 +88,31 @@ def fetch_us_market_symbols():
                     s_clean = s.strip().upper()
                     if valid_pattern.match(s_clean) and len(s_clean) <= 5:
                         symbols.add(s_clean)
-        except Exception as e:
-            print_status(f"⚠️ 리스트 다운로드 에러: {e}")
-            continue
-            
+        except: continue
     return list(symbols)
 
 def build_universe():
-    print_status("🏗️ [Universe Builder] Hard Gate 검증 및 유니버스 구축...")
+    print_status("🏗️ [Universe Builder] 유동성 기반 후보군 압축...")
     
     candidates = fetch_us_market_symbols()
     if len(candidates) < 100:
-        print_status("⚠️ 데이터 부족. 기본 리스트 사용.")
-        candidates = list(set(CORE_WATCHLIST + ["AAPL", "MSFT", "TSLA", "NVDA", "AMD", "AMZN", "GOOGL"]))
+        candidates = list(set(CORE_WATCHLIST + ["AAPL", "MSFT", "TSLA", "NVDA", "AMD"]))
     else:
         candidates = list(set(candidates + CORE_WATCHLIST))
 
-    # 스캔 대상 풀 설정 (Core + Random 2000개)
-    # Hard Gate 통과율을 고려하여 넉넉하게 스캔
+    # 스캔 대상 풀 설정
     scan_pool = list(set(candidates) - set(CORE_WATCHLIST))
     random.shuffle(scan_pool)
-    check_targets = CORE_WATCHLIST + scan_pool[:2000] 
-    
-    print(f"   📋 1차 후보: {len(candidates)}개 -> Gate 검증 대상: {len(check_targets)}개")
+    check_targets = CORE_WATCHLIST + scan_pool[:2000] # 유동성 체크용 샘플링
     
     liquidity_scores = []
-    stats = {"Raw": len(check_targets), "Data_OK": 0, "Pass_Gate": 0, "Fail_Price": 0, "Fail_Vol": 0}
+    chunk_size = 400
     
-    chunk_size = 400 
     for i in range(0, len(check_targets), chunk_size):
         chunk = check_targets[i:i+chunk_size]
         try:
-            # 배치 다운로드
             data = yf.download(chunk, period="5d", group_by='ticker', threads=True, progress=False)
             
-            # 처리 로직 (Single vs Multi)
             if len(chunk) == 1:
                 chunk_syms = chunk
                 chunk_data = {chunk[0]: data}
@@ -135,55 +124,75 @@ def build_universe():
                 try:
                     df = chunk_data.get(sym)
                     if df is None or df.empty: continue
-                    
-                    # 데이터 유효성 확인
-                    if len(df) < 3: continue
-                    stats["Data_OK"] += 1
-                    
-                    # [Hard Gate 1] Price Cut
-                    avg_close = df['Close'].mean()
-                    if avg_close < MIN_PRICE:
-                        stats["Fail_Price"] += 1
-                        continue
-                        
-                    # [Hard Gate 2] Dollar Volume Cut
                     avg_dol_vol = (df['Close'] * df['Volume']).mean()
-                    if avg_dol_vol < MIN_AVG_DOLLAR_VOLUME:
-                        stats["Fail_Vol"] += 1
-                        continue
-                    
-                    # Pass
-                    stats["Pass_Gate"] += 1
+                    if pd.isna(avg_dol_vol): avg_dol_vol = 0
                     liquidity_scores.append((sym, avg_dol_vol))
-                    
                 except: continue
         except: continue
-        print(f"   🛡️ Hard Gate: {min(i+chunk_size, len(check_targets))}/{len(check_targets)} Checked..", end="\r")
+        print(f"   ⚖️ Liquidity Check: {min(i+chunk_size, len(check_targets))}/{len(check_targets)}", end="\r")
 
-    # 결과 로그 출력
-    print(f"\n   📊 [Gate Result] DataOK: {stats['Data_OK']} | ❌ Price(<${MIN_PRICE}): {stats['Fail_Price']} | ❌ Vol(<${MIN_AVG_DOLLAR_VOLUME/1000000:.1f}M): {stats['Fail_Vol']} | ✅ Pass: {stats['Pass_Gate']}")
-
-    # 정렬 및 선별
     liquidity_scores.sort(key=lambda x: x[1], reverse=True)
-    
-    # 1. Top Fixed
     top_fixed = [x[0] for x in liquidity_scores[:UNIVERSE_TOP_FIXED]]
     
-    # 2. Random Sample from Next
     next_pool = [x[0] for x in liquidity_scores[UNIVERSE_TOP_FIXED : UNIVERSE_TOP_FIXED+600]]
     if len(next_pool) > UNIVERSE_RANDOM:
         random_picked = random.sample(next_pool, UNIVERSE_RANDOM)
     else:
         random_picked = next_pool
         
-    final_set = set(top_fixed + random_picked + CORE_WATCHLIST)
-    final_list = list(final_set)
-    
-    print(f"✅ [Universe] 최종 확정: {len(final_list)}개 (Top {UNIVERSE_TOP_FIXED} + Random {len(random_picked)} + Core)")
+    final_list = list(set(top_fixed + random_picked + CORE_WATCHLIST))
+    print(f"\n✅ [Universe] 최종 스캔 대상: {len(final_list)}개")
     return final_list
 
 # ==========================================
-# 2. RIB V2 Engine (Logic 유지)
+# 2. Hard Gate Logic (New V10.7)
+# ==========================================
+def check_turnaround_gate(hist):
+    """
+    [V10.7] Turnaround Hard Gate
+    구조적 붕괴 여부와 단기 과열 여부를 정밀 타격
+    """
+    try:
+        # 데이터 길이 체크 (1년치 필수)
+        if len(hist) < 252:
+            return False, "Data < 252d", 0, 0
+
+        current_price = hist["Close"].iloc[-1]
+        current_vol = hist["Volume"].tail(5).mean() # 최근 5일 평균 거래량
+        avg_dol_vol = current_price * current_vol
+
+        # 1. Price Gate
+        if current_price < GATE_MIN_PRICE:
+            return False, "Penny Stock", 0, 0
+
+        # 2. Liquidity Gate
+        if avg_dol_vol < GATE_MIN_DOL_VOL:
+            return False, "Low Liquidity", 0, 0
+
+        # 3. Structural Crash Gate (252일 고점 대비 낙폭)
+        high_252 = hist["High"].tail(252).max()
+        dd_252 = ((current_price - high_252) / high_252) * 100
+        
+        # -25%보다 덜 빠졌으면(예: -10%) 탈락. "충분히 망가지지 않음"
+        if dd_252 > GATE_MAX_DD_252: 
+            return False, f"Not Crashed ({dd_252:.1f}%)", dd_252, 0
+
+        # 4. Overheat Gate (60일 고점 대비 회복률)
+        high_60 = hist["High"].tail(60).max()
+        if high_60 == 0: return False, "Data Error", 0, 0
+        recovery_ratio = current_price / high_60
+        
+        # 고점 대비 90% 이상 올라와 있으면(거의 V자 완료) 탈락. "먹을 거 없음"
+        if recovery_ratio > GATE_MAX_REC_60:
+            return False, f"Overheated ({recovery_ratio:.2f})", dd_252, recovery_ratio
+
+        return True, "Pass", dd_252, recovery_ratio
+
+    except Exception as e:
+        return False, "Error", 0, 0
+
+# ==========================================
+# 3. RIB V2 Engine & Scoring
 # ==========================================
 def calculate_structure_quality(base_a, base_b, base_a_date, base_b_date):
     try:
@@ -251,7 +260,6 @@ def calculate_risk_stability(current_price, hist):
 
 def analyze_reignition_structure(hist):
     try:
-        if len(hist) < 120: return None
         recent = hist.tail(120).copy()
         current_price = recent["Close"].iloc[-1]
         
@@ -296,7 +304,7 @@ def analyze_reignition_structure(hist):
             status = "🔥 RIB BREAKOUT"
             grade = "ACTION"
             priority = 1
-            trigger_msg = "Pivot 돌파. 모멘텀 발생."
+            trigger_msg = "Pivot 돌파."
         elif dist_pct <= 3.0:
             status = "🚀 RIB READY"
             grade = "SETUP"
@@ -306,7 +314,7 @@ def analyze_reignition_structure(hist):
             status = "👀 RIB WATCH"
             grade = "RADAR"
             priority = 3
-            trigger_msg = f"구조 형성 중 ({dist_pct:.1f}%)."
+            trigger_msg = f"구조 형성 중."
         else:
             status = "💤 RIB EARLY"
             grade = "IGNORE"
@@ -336,7 +344,7 @@ def analyze_reignition_structure(hist):
     except: return None
 
 # ==========================================
-# 3. Narrative Engine (Optimized)
+# 4. Narrative Engine (Optimized)
 # ==========================================
 def translate_cached(text, translator):
     if text in TRANSLATION_CACHE:
@@ -350,18 +358,16 @@ def translate_cached(text, translator):
 def classify_news_semantics(title, context_type):
     title_lower = title.lower()
     if context_type == "DROP":
-        if any(k in title_lower for k in ['fraud', 'investigation', 'sec probe', 'lawsuit', 'bankruptcy', 'delisting', 'scandal', 'breach']):
+        if any(k in title_lower for k in ['fraud', 'investigation', 'sec probe', 'lawsuit', 'bankruptcy', 'delisting', 'scandal']):
             return "🔴 Structural Risk", "risk", 30 
-        if any(k in title_lower for k in ['miss', 'earnings', 'revenue', 'guidance', 'downgrade', 'cut', 'slumps', 'plunge', 'tumble']):
+        if any(k in title_lower for k in ['miss', 'earnings', 'revenue', 'guidance', 'downgrade', 'cut', 'slumps']):
             return "📉 Event Shock", "event", 20 
-        if any(k in title_lower for k in ['fed', 'inflation', 'market', 'yield', 'sector']):
-            return "🌍 Macro Noise", "macro", 5 
         return "📉 Drop Factor", "event", 10
     elif context_type == "RECOVERY":
-        good_kw = ['upgrade', 'beat', 'raise', 'partnership', 'approval', 'record', 'buyback', 'jump', 'soar', 'contract', 'expansion', 'restructuring', 'cost cut', 'margin', 'profitability', 'turnaround', 'initiates', 'target price', 'outperform', 'rebound', 'new product']
+        good_kw = ['upgrade', 'beat', 'raise', 'partnership', 'approval', 'record', 'buyback', 'jump', 'soar', 'contract', 'turnaround', 'initiates']
         if any(k in title_lower for k in good_kw):
             return "🟢 Recovery Signal", "good", 30
-        if any(k in title_lower for k in ['fall', 'drop', 'cut', 'lawsuit', 'sell']):
+        if any(k in title_lower for k in ['fall', 'drop', 'cut', 'lawsuit']):
             return "⚠️ Risk Lingering", "bad", -10
         return "⚖️ General News", "neutral", 0
     return "News", "neutral", 0
@@ -384,14 +390,11 @@ def fetch_filtered_news(symbol, start_date, end_date, context_type):
                     except: continue 
                     if not (target_start <= pubDate <= target_end + timedelta(days=1)): continue
                     title = item.find('title').text.rsplit(" - ", 1)[0]
-                    link = item.find('link').text
-                    if any(x['title'] == title for x in items): continue
                     
                     title_ko = translate_cached(title, translator)
                     cat_text, cat_type, weight = classify_news_semantics(title, context_type)
-                    if context_type == "DROP" and cat_type == "macro": continue
-
-                    items.append({"title": title, "title_ko": title_ko, "link": link, "date": pubDate.strftime("%Y-%m-%d"), "category": cat_text, "type": cat_type, "weight": weight})
+                    
+                    items.append({"title": title, "title_ko": title_ko, "link": item.find('link').text, "date": pubDate.strftime("%Y-%m-%d"), "category": cat_text, "type": cat_type, "weight": weight})
                     count += 1
                     if count >= 3: break 
                 except: continue
@@ -422,23 +425,30 @@ def analyze_narrative_score(symbol, rib_data):
     except: return empty_result
 
 # ==========================================
-# 4. Main Scan Logic (Batch Optimized)
+# 5. Main Scan Logic (Hard Gate Applied)
 # ==========================================
 def run_scan():
-    print_status("🧠 [Brain] SNIPER V10.6 (Hard Gate Activated) 가동...")
+    print_status("🧠 [Brain] SNIPER V10.7 (Hard Gate Activated) 가동...")
+    print(f"🛡️ Gates: Price>${GATE_MIN_PRICE} | DD252<={GATE_MAX_DD_252}% | Rec60<={GATE_MAX_REC_60*100}%")
     
     universe = build_universe()
     survivors = []
     
-    print(f"\n🔍 배치 스캔 시작 ({len(universe)}개)...")
+    stats = {
+        "Total": 0, "Gate_Pass": 0, 
+        "Fail_Price": 0, "Fail_Vol": 0, "Fail_DD252": 0, "Fail_Rec60": 0,
+        "Fail_RIB": 0, "Final": 0
+    }
     
     batch_size = 50 
+    print(f"\n🔍 Gate 통과 정밀 분석 시작...")
     
     for i in range(0, len(universe), batch_size):
         batch = universe[i:i+batch_size]
         print(f"   🚀 Scanning Batch {i//batch_size + 1} ({len(batch)} symbols)...", end="\r")
         
         try:
+            # 1년치 데이터 다운로드 (252일 Gate 체크를 위해 필수)
             data = yf.download(batch, period="1y", group_by='ticker', threads=True, progress=False)
             
             for sym in batch:
@@ -446,34 +456,56 @@ def run_scan():
                     if len(batch) == 1: df = data
                     else: df = data[sym]
                     
-                    if len(df) < 230: continue 
+                    stats["Total"] += 1
                     
-                    high_120 = df["High"].tail(120).max()
-                    cur = df["Close"].iloc[-1]
-                    dd = ((cur - high_120) / high_120) * 100
+                    # [V10.7] Hard Gate Check
+                    passed, reason, dd_val, rec_val = check_turnaround_gate(df)
                     
-                    if dd <= CUTOFF_DEEP_DROP: continue
+                    if not passed:
+                        if "Penny" in reason: stats["Fail_Price"] += 1
+                        elif "Liquidity" in reason: stats["Fail_Vol"] += 1
+                        elif "Not Crashed" in reason: stats["Fail_DD252"] += 1
+                        elif "Overheated" in reason: stats["Fail_Rec60"] += 1
+                        continue
                     
+                    stats["Gate_Pass"] += 1
+                    
+                    # RIB Analysis
                     rib_data = analyze_reignition_structure(df)
-                    if not rib_data: continue
-                    if rib_data['rib_score'] < CUTOFF_SCORE: continue
+                    if not rib_data: 
+                        stats["Fail_RIB"] += 1
+                        continue
+                        
+                    if rib_data['rib_score'] < CUTOFF_SCORE: 
+                        stats["Fail_RIB"] += 1
+                        continue
 
-                    grade = rib_data.get('grade', 'IGNORE')
-                    score = rib_data.get('rib_score', 0)
+                    # Narrative
+                    narrative = analyze_narrative_score(sym, rib_data)
                     
-                    narrative = {"drop_news": [], "recovery_news": [], "narrative_score": 0, "status_label": "Skipped"}
-                    
-                    if score >= NEWS_SCAN_THRESHOLD or grade in ['ACTION', 'SETUP', 'RADAR']:
-                        narrative = analyze_narrative_score(sym, rib_data)
+                    cur = df["Close"].iloc[-1]
+                    dd = ((cur - df["High"].max()) / df["High"].max()) * 100
                     
                     survivors.append({
-                        "symbol": sym, "price": round(cur, 2), "dd": round(dd, 2),
+                        "symbol": sym, "price": round(cur, 2), "dd": round(dd_val, 2), # 252일 기준 DD 표기
                         "name": sym, 
                         "rib_data": rib_data,
                         "narrative": narrative
                     })
+                    stats["Final"] += 1
                 except Exception as e: continue
         except Exception as e: continue
+
+    print(f"\n" + "="*50)
+    print(f"📊 [GATE REPORT] Total Scanned: {stats['Total']}")
+    print(f"   ❌ Price Cut (<$4): {stats['Fail_Price']}")
+    print(f"   ❌ Vol Cut (<$5M): {stats['Fail_Vol']}")
+    print(f"   📉 DD252 Cut (Not Crashed): {stats['Fail_DD252']} (Rising/Stable Stocks Removed)")
+    print(f"   🛑 Rec60 Cut (Overheated): {stats['Fail_Rec60']} (V-Shape Completed Removed)")
+    print(f"   ✅ Gate Passed: {stats['Gate_Pass']}")
+    print(f"   🧩 RIB Filtered: {stats['Fail_RIB']}")
+    print(f"   🏆 Survivors: {stats['Final']}")
+    print("="*50)
 
     survivors.sort(key=lambda x: (
         x['rib_data'].get('priority', 99), 
@@ -481,11 +513,10 @@ def run_scan():
         -x['narrative']['narrative_score']
     ))
     
-    print(f"\n✅ 최종 분석 완료: {len(survivors)}개 종목 보고")
     return survivors
 
 # ==========================================
-# 5. Dashboard Generation
+# 6. Dashboard Generation
 # ==========================================
 def generate_dashboard(targets):
     action_group = [s for s in targets if s['rib_data']['grade'] in ['ACTION', 'SETUP']]
@@ -525,7 +556,7 @@ def generate_dashboard(targets):
             <div class="card-header">
                 <span class="sym">{sym}</span>
                 <span class="price">${stock.get('price',0)}</span>
-                <span class="dd-badge">{stock.get('dd',0):.1f}%</span>
+                <span class="dd-badge" title="252-Day Max Drawdown">DD {stock.get('dd',0):.1f}%</span>
                 <span class="narrative-badge" style="background:{narr_badge_color}">{status_label}</span>
             </div>
             <div class="card-body-grid">
@@ -577,7 +608,7 @@ def generate_dashboard(targets):
     <html>
     <head>
         <meta charset="utf-8">
-        <title>Sniper V10.6 Hard Gate</title>
+        <title>Sniper V10.7 Hard Gate</title>
         <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
         <script>
             function copySymbols(text, btn) {{
@@ -635,10 +666,10 @@ def generate_dashboard(targets):
     </head>
     <body>
         <div class="container">
-            <h1>SNIPER V10.6 <span style="font-size:0.6em; color:#aaa;">HARD GATE ACTIVATED</span></h1>
+            <h1>SNIPER V10.7 <span style="font-size:0.6em; color:#aaa;">HARD GATE ACTIVATED</span></h1>
             
             <div style="text-align:center; color:#777; margin-bottom:20px; font-size:0.9em;">
-                ⚙️ Gate: Price >= ${MIN_PRICE} | Vol >= ${MIN_AVG_DOLLAR_VOLUME/1000000}M | RIB Score >= {CUTOFF_SCORE}
+                🛡️ Gates: Price>${GATE_MIN_PRICE} | DD(252Y) <= {GATE_MAX_DD_252}% | Rec(60D) <= {GATE_MAX_REC_60*100:.0f}%
             </div>
             
             <details open>
