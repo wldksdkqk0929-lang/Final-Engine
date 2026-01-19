@@ -36,12 +36,12 @@ except ImportError:
     from deep_translator import GoogleTranslator
 
 # ---------------------------------------------------------
-# ⚙️ V10.2 설정 (Full Timeline Analysis)
+# ⚙️ V10.3 설정 (Structure First Strategy)
 # ---------------------------------------------------------
 UNIVERSE_MAX = 150
-CUTOFF_SCORE = 65       
-CUTOFF_DEEP_DROP = -55  
-NARRATIVE_THRESHOLD = 70 # 서사 점수 70점 이상만 Complete 인정
+CUTOFF_SCORE = 65       # RIB Score (구조 점수) 최소 컷
+CUTOFF_DEEP_DROP = -55  # 지하실 종목 컷
+# Note: Narrative Threshold는 필터링에 쓰지 않고 배지 표시에만 사용
 # ---------------------------------------------------------
 
 ETF_LIST = ["TQQQ", "SQQQ", "SOXL", "SOXS", "TSLL", "NVDL", "LABU", "LABD"]
@@ -117,7 +117,7 @@ def build_universe():
     return final_list
 
 # ==========================================
-# 2. RIB V2 Engine
+# 2. RIB V2 Engine (Structure First)
 # ==========================================
 def calculate_structure_quality(base_a, base_b, base_a_date, base_b_date):
     try:
@@ -206,6 +206,7 @@ def analyze_reignition_structure(hist):
         if base_b_price < base_a_price: return {"status": "INVALID_LOW", "rib_score": 0}
         if current_price < base_b_price: return {"status": "INVALID_BROKEN", "rib_score": 0}
 
+        # V10.3 RIB Scoring
         s_struct = calculate_structure_quality(base_a_price, base_b_price, base_a_date, base_b_date)
         s_comp = calculate_compression_energy(hist)
         s_prox = calculate_breakout_proximity(current_price, pivot_price, hist)
@@ -241,8 +242,7 @@ def analyze_reignition_structure(hist):
             priority = 4
             trigger_msg = "이격도 큼."
 
-        # High 점 구하기 (Drop Window용)
-        # Base A 이전 120일 중 최고점 날짜
+        # High point for Drop Window
         pre_base_a = hist.loc[:base_a_idx]
         if not pre_base_a.empty:
             peak_idx = pre_base_a["High"].tail(120).idxmax()
@@ -254,7 +254,7 @@ def analyze_reignition_structure(hist):
             "base_a": base_a_price, "base_a_date": base_a_date,
             "pivot": pivot_price, "pivot_date": pivot_date,
             "base_b": base_b_price, "base_b_date": base_b_date,
-            "peak_date": peak_date, # 낙폭 시작점
+            "peak_date": peak_date,
             "distance": dist_pct,
             "status": status,
             "grade": grade,
@@ -266,22 +266,21 @@ def analyze_reignition_structure(hist):
     except: return None
 
 # ==========================================
-# 3. Narrative Engine (V10.2 Client Filter)
+# 3. Narrative Engine (Support Layer)
 # ==========================================
 def classify_news_semantics(title, context_type):
     title_lower = title.lower()
     
     if context_type == "DROP":
         if any(k in title_lower for k in ['fraud', 'investigation', 'sec probe', 'lawsuit', 'bankruptcy', 'delisting', 'scandal', 'breach']):
-            return "🔴 Structural Risk", "risk", 30 # 강력 악재
+            return "🔴 Structural Risk", "risk", 30 
         if any(k in title_lower for k in ['miss', 'earnings', 'revenue', 'guidance', 'downgrade', 'cut', 'slumps', 'plunge', 'tumble']):
-            return "📉 Event Shock", "event", 20 # 일반 악재
+            return "📉 Event Shock", "event", 20 
         if any(k in title_lower for k in ['fed', 'inflation', 'market', 'yield', 'sector']):
-            return "🌍 Macro Noise", "macro", 5 # 매크로
+            return "🌍 Macro Noise", "macro", 5 
         return "📉 Drop Factor", "event", 10
 
     elif context_type == "RECOVERY":
-        # [V10.2] Recovery Keywords Expanded
         good_kw = [
             'upgrade', 'beat', 'raise', 'partnership', 'approval', 'record', 'buyback', 'jump', 'soar',
             'contract', 'expansion', 'restructuring', 'cost cut', 'margin', 'profitability', 'turnaround',
@@ -298,14 +297,8 @@ def classify_news_semantics(title, context_type):
     return "News", "neutral", 0
 
 def fetch_filtered_news(symbol, start_date, end_date, context_type):
-    """
-    [V10.2] Client-Side Date Filtering
-    RSS에서 많이(20개) 긁어온 뒤, 코드에서 날짜로 정밀 타격
-    """
     items = []
     try:
-        # 쿼리 단순화 (날짜 제거, 종목명만) -> 구글은 최신순으로 줌
-        # 하지만 우리는 많이 받아서 필터링 할 것임
         url = f"https://news.google.com/rss/search?q={symbol}+stock&hl=en-US&gl=US&ceid=US:en"
         resp = requests.get(url, timeout=5)
         
@@ -313,33 +306,23 @@ def fetch_filtered_news(symbol, start_date, end_date, context_type):
             root = ET.fromstring(resp.content)
             translator = GoogleTranslator(source='auto', target='ko')
             
-            # 파싱용 날짜 포맷
-            # RSS pubDate 예: "Mon, 19 Jan 2026 10:00:00 GMT"
-            
             target_start = datetime.strptime(start_date, "%Y-%m-%d")
-            # end_date가 None이면 오늘까지
             target_end = datetime.strptime(end_date, "%Y-%m-%d") if end_date else datetime.now()
             
             count = 0
-            # [V10.2] 최대 20개까지 스캔 (과거 뉴스 찾기 위해)
             for item in root.findall('./channel/item')[:20]: 
                 try:
                     pubDateStr = item.find('pubDate').text
-                    # 날짜 파싱 (유연하게)
                     try:
                         pubDate = datetime.strptime(pubDateStr[:16], "%a, %d %b %Y")
-                    except: continue # 날짜 포맷 다르면 패스
+                    except: continue 
 
-                    # 날짜 필터링 (핵심)
-                    # DROP: target_start <= article_date <= target_end
-                    # REC: target_start <= article_date
                     if not (target_start <= pubDate <= target_end + timedelta(days=1)):
                         continue
 
                     title = item.find('title').text.rsplit(" - ", 1)[0]
                     link = item.find('link').text
                     
-                    # 제목 중복 제거 (Set 사용 추천하지만 간단하게 리스트 체크)
                     if any(x['title'] == title for x in items): continue
 
                     try: title_ko = translator.translate(title)
@@ -347,7 +330,6 @@ def fetch_filtered_news(symbol, start_date, end_date, context_type):
                     
                     cat_text, cat_type, weight = classify_news_semantics(title, context_type)
                     
-                    # Macro는 Drop 원인으로 약함
                     if context_type == "DROP" and cat_type == "macro": continue
 
                     items.append({
@@ -357,56 +339,48 @@ def fetch_filtered_news(symbol, start_date, end_date, context_type):
                     })
                     
                     count += 1
-                    if count >= 3: break # 기간별 유효 뉴스 3개만 확보하면 됨
+                    if count >= 3: break 
                 except: continue
     except: pass
     return items
 
 def analyze_narrative_score(symbol, rib_data):
     """
-    [V10.2] Narrative Scoring System
-    단순 OX가 아니라, (Drop Weight + Recovery Weight) = Narrative Score (0~100)
+    [V10.3] Relaxed Narrative Scoring
+    서사는 '필터'가 아니라 '점수'로만 존재. 감점 로직 제거.
     """
     empty_result = {
         "drop_news": [], "recovery_news": [], 
-        "narrative_score": 0, "is_complete": False, "status_label": "⚠️ No Data"
+        "narrative_score": 0, "status_label": "⚠️ Info Needed"
     }
     if not rib_data: return empty_result
     
     try:
-        # 1. Drop Period: Peak Date(고점) ~ Base A + 3일 (하락 구간 전체)
         drop_start = rib_data['peak_date']
         dt_a = datetime.strptime(rib_data['base_a_date'], "%Y-%m-%d")
         drop_end = (dt_a + timedelta(days=3)).strftime("%Y-%m-%d")
         
-        # 2. Recovery Period: Base B ~ Now
         rec_start = rib_data['base_b_date']
         
         drop_news = fetch_filtered_news(symbol, drop_start, drop_end, "DROP")
         rec_news = fetch_filtered_news(symbol, rec_start, None, "RECOVERY")
         
-        # Scoring
         drop_score = sum(n['weight'] for n in drop_news)
         rec_score = sum(n['weight'] for n in rec_news)
         
-        # Normalize (각 최대 50점)
-        drop_final = min(50, drop_score)
-        rec_final = min(50, rec_score)
+        total_score = min(50, drop_score) + min(50, rec_score)
         
-        total_score = drop_final + rec_final
-        
-        # [V10.2] Logic: 악재도 있고 호재도 있어야 진짜 (둘 중 하나라도 0이면 감점)
-        if drop_final == 0 or rec_final == 0:
-            total_score = total_score * 0.5 # 페널티
-            
-        is_complete = total_score >= NARRATIVE_THRESHOLD
+        # [V10.3] 감점 로직 제거. 점수만 산출.
+        # Labeling for Badge
+        if total_score >= 60: label = f"🔥 Strong ({total_score})"
+        elif total_score >= 30: label = f"⚖️ Neutral ({total_score})"
+        else: label = f"⚠️ Weak ({total_score})"
         
         return {
             "drop_news": drop_news,
             "recovery_news": rec_news,
             "narrative_score": int(total_score),
-            "is_complete": is_complete,
-            "status_label": f"✅ Narrative ({int(total_score)})" if is_complete else f"⚠️ Weak ({int(total_score)})"
+            "status_label": label
         }
     except: return empty_result
 
@@ -414,33 +388,36 @@ def analyze_narrative_score(symbol, rib_data):
 # 4. Main Scan Logic
 # ==========================================
 def run_scan():
-    print_status("🧠 [Brain] Turnaround Sniper V10.2 (Full Timeline) 가동...")
+    print_status("🧠 [Brain] Turnaround Sniper V10.3 (Structure First) 가동...")
     
     universe = build_universe()
     survivors = []
     
-    print(f"\n🔍 서사 정밀 스캔 시작 ({len(universe)}개 종목)...")
+    print(f"\n🔍 구조 우선 정밀 스캔 시작 ({len(universe)}개 종목)...")
 
     for i, sym in enumerate(universe):
         try:
             print(f"   Scanning [{i+1}/{len(universe)}] {sym:<5}", end="\r")
             
             t = yf.Ticker(sym)
-            hist = t.history(period="6mo")
-            if len(hist) < 120: continue
+            hist = t.history(period="1y") # 224일선 위해 1년치 필요
+            if len(hist) < 230: continue # 224MA 계산 최소치
             
-            high_120 = hist["High"].rolling(120).max().iloc[-1]
+            # 1. Basic Filters
+            high_120 = hist["High"].tail(120).max()
             cur = hist["Close"].iloc[-1]
             dd = ((cur - high_120) / high_120) * 100
             
             if dd <= CUTOFF_DEEP_DROP: continue
             
+            # 2. RIB Analysis (Core Filter)
             rib_data = analyze_reignition_structure(hist)
             if not rib_data: continue
             
+            # [V10.3] RIB Score Filter Only
             if rib_data['rib_score'] < CUTOFF_SCORE: continue
 
-            # Narrative Analysis (V10.2)
+            # 3. Narrative Analysis (Support Info)
             narrative = analyze_narrative_score(sym, rib_data)
             
             survivors.append({
@@ -452,86 +429,56 @@ def run_scan():
 
         except: continue
 
-    # 정렬: 1순위 서사점수 -> 2순위 RIB등급 -> 3순위 RIB점수
+    # 정렬: 1순위 RIB Priority -> 2순위 RIB Score -> 3순위 Narrative Score
     survivors.sort(key=lambda x: (
-        -x['narrative']['narrative_score'],
         x['rib_data'].get('priority', 99), 
-        -x['rib_data'].get('rib_score', 0)
+        -x['rib_data'].get('rib_score', 0),
+        -x['narrative']['narrative_score']
     ))
     
     print(f"\n✅ 최종 분석 완료: {len(survivors)}개 종목 보고")
     return survivors
 
 # ==========================================
-# 5. Dashboard Generation
+# 5. Dashboard Generation (Structure First Layout)
 # ==========================================
 def generate_dashboard(targets):
-    # Score Threshold로 그룹 분리
-    complete_group = [s for s in targets if s['narrative']['is_complete']]
-    incomplete_group = [s for s in targets if not s['narrative']['is_complete']]
+    # [V10.3] Group by RIB Grade (Structure First)
+    action_group = [s for s in targets if s['rib_data']['grade'] == 'ACTION' or s['rib_data']['grade'] == 'SETUP']
+    radar_group = [s for s in targets if s['rib_data']['grade'] == 'RADAR']
+    others_group = [s for s in targets if s['rib_data']['grade'] == 'IGNORE'] # Rescue case
 
     def render_card(stock):
         sym = stock['symbol']
         rib = stock.get("rib_data")
         narr = stock.get("narrative", {})
         
-        # Drop News
+        # News Rendering
         drop_html = ""
         for n in narr.get('drop_news', []):
             tag_color = "#c0392b" if n['type'] == 'risk' else "#e67e22"
-            drop_html += f"""
-            <div class="news-item">
-                <span class="news-date">{n['date']}</span>
-                <span class="news-tag" style="background:{tag_color}">{n['category']}</span>
-                <a href="{n['link']}" target="_blank">{n['title_ko']}</a>
-            </div>
-            """
-        if not drop_html: drop_html = "<div class='empty-msg'>📉 기간 내 중요 뉴스 없음 (Clean Drop?)</div>"
+            drop_html += f"<div class='news-item'><span class='news-tag' style='background:{tag_color}'>{n['category']}</span><a href='{n['link']}' target='_blank'>{n['title_ko']}</a></div>"
+        if not drop_html: drop_html = "<div class='empty-msg'>📉 과거 뉴스 데이터 부족</div>"
 
-        # Recovery News
         rec_html = ""
         for n in narr.get('recovery_news', []):
             tag_color = "#27ae60" if n['type'] == 'good' else "#7f8c8d"
-            rec_html += f"""
-            <div class="news-item">
-                <span class="news-date">{n['date']}</span>
-                <span class="news-tag" style="background:{tag_color}">{n['category']}</span>
-                <a href="{n['link']}" target="_blank">{n['title_ko']}</a>
-            </div>
-            """
-        if not rec_html: rec_html = "<div class='empty-msg'>🌱 회복 시그널 부족</div>"
+            rec_html += f"<div class='news-item'><span class='news-tag' style='background:{tag_color}'>{n['category']}</span><a href='{n['link']}' target='_blank'>{n['title_ko']}</a></div>"
+        if not rec_html: rec_html = "<div class='empty-msg'>🌱 최근 뉴스 데이터 부족</div>"
 
         chart_id = f"tv_{sym}_{random.randint(1000,9999)}"
         grade = rib.get("grade", "N/A")
         grade_color = {"ACTION": "#e74c3c", "SETUP": "#e67e22", "RADAR": "#f1c40f", "IGNORE": "#95a5a6"}.get(grade, "#555")
-        
         comps = rib.get("components", {})
         
-        rib_html = f"""
-        <div class="rib-stat-box" style="border-top: 3px solid {grade_color}">
-            <div class="rib-header">
-                <span style="color:{grade_color}; font-weight:bold;">{grade}</span>
-                <span style="color:#aaa;">Score {rib.get('rib_score',0)}</span>
-            </div>
-            <div class="rib-metrics">
-                <span>Base A: ${rib.get('base_a',0):.2f}</span>
-                <span>Base B: ${rib.get('base_b',0):.2f}</span>
-            </div>
-            <div style="display:flex; gap:5px; margin-top:8px; font-size:0.7em; color:#aaa; justify-content:center; background:#222; padding:3px; border-radius:3px;">
-                <span title="Structure">📐{comps.get('struct',0)}</span>
-                <span title="Compression">🗜️{comps.get('comp',0)}</span>
-                <span title="Proximity">🎯{comps.get('prox',0)}</span>
-                <span title="Risk">🛡️{comps.get('risk',0)}</span>
-            </div>
-            <div class="rib-msg">💡 {rib.get('trigger_msg','')}</div>
-        </div>
-        """
-
         narr_score = narr.get('narrative_score', 0)
         status_label = narr.get('status_label', 'Unknown')
         
-        badge_class = 'complete' if narr.get('is_complete') else 'incomplete'
-
+        # Narrative Badge Color Logic
+        narr_badge_color = "#555"
+        if narr_score >= 60: narr_badge_color = "#27ae60" # Green
+        elif narr_score >= 30: narr_badge_color = "#f39c12" # Orange
+        
         return f"""
         <div class="card">
             <div class="card-header">
@@ -539,27 +486,51 @@ def generate_dashboard(targets):
                 <span class="name">{stock.get('name','')}</span>
                 <span class="price">${stock.get('price',0)}</span>
                 <span class="dd-badge">{stock.get('dd',0):.1f}%</span>
-                <span class="narrative-badge {badge_class}">{status_label}</span>
+                <span class="narrative-badge" style="background:{narr_badge_color}">{status_label}</span>
             </div>
             <div class="card-body-grid">
                 <div class="col-drop">
-                    <div class="col-title">📉 DROP CAUSE ({rib.get('peak_date','')}~)</div>
+                    <div class="col-title">📉 DROP CAUSE</div>
                     {drop_html}
                 </div>
                 <div class="col-chart">
                     <div class="tradingview-widget-container">
-                        <div id="{chart_id}" style="height:200px;"></div>
+                        <div id="{chart_id}" style="height:250px;"></div>
                         <script type="text/javascript">
                             new TradingView.widget({{
                                 "autosize": true, "symbol": "{sym}", "interval": "D", "timezone": "Etc/UTC", "theme": "dark", 
-                                "style": "1", "locale": "en", "hide_top_toolbar": true, "hide_legend": true, "container_id": "{chart_id}"
+                                "style": "1", "locale": "en", "hide_top_toolbar": true, "hide_legend": true, 
+                                "container_id": "{chart_id}",
+                                "studies": [
+                                    "MASimple@tv-basicstudies", 
+                                    "MAExp@tv-basicstudies"
+                                ],
+                                "studies_overrides": {{
+                                    "MASimple@tv-basicstudies.length": 224,
+                                    "MASimple@tv-basicstudies.plot.color": "#FFFF00",
+                                    "MASimple@tv-basicstudies.plot.linewidth": 3,
+                                    "MAExp@tv-basicstudies.length": 20,
+                                    "MAExp@tv-basicstudies.plot.color": "#00FFFF"
+                                }}
                             }});
                         </script>
                     </div>
-                    {rib_html}
+                    <div class="rib-stat-box" style="border-top: 3px solid {grade_color}">
+                        <div class="rib-header">
+                            <span style="color:{grade_color}; font-weight:bold;">{grade} : {rib.get('status')}</span>
+                            <span>Score {rib.get('rib_score',0)}</span>
+                        </div>
+                        <div style="display:flex; gap:10px; margin-top:5px; font-size:0.75em; color:#aaa; justify-content:center;">
+                            <span>📐St:{comps.get('struct',0)}</span>
+                            <span>🗜️Cp:{comps.get('comp',0)}</span>
+                            <span>🎯Px:{comps.get('prox',0)}</span>
+                            <span>🛡️Rk:{comps.get('risk',0)}</span>
+                        </div>
+                        <div class="rib-msg">💡 {rib.get('trigger_msg','')}</div>
+                    </div>
                 </div>
                 <div class="col-rec">
-                    <div class="col-title">🌱 RECOVERY SIGNAL ({rib.get('base_b_date','')}~)</div>
+                    <div class="col-title">🌱 RECOVERY SIGNAL</div>
                     {rec_html}
                 </div>
             </div>
@@ -571,7 +542,7 @@ def generate_dashboard(targets):
     <html>
     <head>
         <meta charset="utf-8">
-        <title>Sniper V10.2 Full Timeline</title>
+        <title>Sniper V10.3 Structure First</title>
         <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
         <style>
             body {{ background: #131722; color: #d1d4dc; font-family: 'Segoe UI', sans-serif; padding: 20px; margin: 0; }}
@@ -590,11 +561,9 @@ def generate_dashboard(targets):
             .name {{ font-size: 0.9em; color: #888; flex-grow: 1; }}
             .price {{ font-weight: bold; color: #fff; }}
             .dd-badge {{ background: #444; color: #ddd; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; }}
-            .narrative-badge {{ padding: 4px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; }}
-            .narrative-badge.complete {{ background: #27ae60; color: #fff; }}
-            .narrative-badge.incomplete {{ background: #555; color: #aaa; }}
+            .narrative-badge {{ padding: 4px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; color: #fff; }}
 
-            .card-body-grid {{ display: grid; grid-template-columns: 1fr 1.2fr 1fr; height: 350px; }}
+            .card-body-grid {{ display: grid; grid-template-columns: 1fr 1.2fr 1fr; height: 380px; }}
             
             .col-drop {{ border-right: 1px solid #2a2e39; padding: 15px; overflow-y: auto; background: rgba(192, 57, 43, 0.05); }}
             .col-chart {{ padding: 0; display: flex; flex-direction: column; }}
@@ -603,7 +572,6 @@ def generate_dashboard(targets):
             .col-title {{ font-size: 0.85em; font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid #333; padding-bottom: 5px; color: #aaa; text-transform: uppercase; }}
             
             .news-item {{ margin-bottom: 8px; font-size: 0.85em; line-height: 1.4; }}
-            .news-date {{ color: #666; font-size: 0.8em; margin-right: 5px; }}
             .news-tag {{ color: #fff; padding: 1px 4px; border-radius: 3px; font-size: 0.75em; margin-right: 5px; }}
             .news-item a {{ color: #ccc; text-decoration: none; }}
             .news-item a:hover {{ color: #fff; text-decoration: underline; }}
@@ -611,29 +579,32 @@ def generate_dashboard(targets):
 
             .rib-stat-box {{ background: #1e222d; padding: 10px; flex-grow: 1; display: flex; flex-direction: column; justify-content: center; }}
             .rib-header {{ display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 0.9em; }}
-            .rib-metrics {{ display: flex; justify-content: space-between; font-size: 0.8em; color: #ccc; margin-bottom: 5px; }}
             .rib-msg {{ color: #e67e22; font-size: 0.85em; text-align: center; margin-top: 5px; font-style: italic; }}
 
         </style>
     </head>
     <body>
         <div class="container">
-            <h1>SNIPER V10.2 <span style="font-size:0.6em; color:#aaa;">FULL TIMELINE</span></h1>
-            <div style="text-align:center; color:#777; margin-bottom:20px;">
-                ⚙️ Config: Score>={CUTOFF_SCORE} | Narrative>={NARRATIVE_THRESHOLD} | Full History Scan
-            </div>
+            <h1>SNIPER V10.3 <span style="font-size:0.6em; color:#aaa;">STRUCTURE FIRST + 224MA</span></h1>
             
             <details open>
-                <summary>✅ NARRATIVE COMPLETE ({len(complete_group)}) - 서사 완성 종목 (강력 추천)</summary>
+                <summary>🔥 ACTION & SETUP ({len(action_group)}) - 즉시 대응 및 대기 영역</summary>
                 <div class="section-content">
-                    {"".join([render_card(s) for s in complete_group]) if complete_group else "<div style='text-align:center; color:#555;'>완벽한 서사 종목 없음</div>"}
+                    {"".join([render_card(s) for s in action_group]) if action_group else "<div style='text-align:center; color:#555;'>해당 없음</div>"}
                 </div>
             </details>
 
             <details>
-                <summary>⚠️ NARRATIVE WEAK ({len(incomplete_group)}) - 서사 부족 / 단순 반등</summary>
+                <summary>📡 RADAR ({len(radar_group)}) - 구조 형성 관찰 영역</summary>
                 <div class="section-content">
-                    {"".join([render_card(s) for s in incomplete_group])}
+                    {"".join([render_card(s) for s in radar_group]) if radar_group else "<div style='text-align:center; color:#555;'>해당 없음</div>"}
+                </div>
+            </details>
+
+            <details>
+                <summary>💤 OTHERS ({len(others_group)}) - 기타</summary>
+                <div class="section-content">
+                    {"".join([render_card(s) for s in others_group])}
                 </div>
             </details>
         </div>
