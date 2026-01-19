@@ -50,16 +50,24 @@ PIPELINE_STATS = {
 }
 
 # ---------------------------------------------------------
-# ⚙️ V11.1 설정 유지 (Engine Logic Touched: NONE)
+# ⚙️ V11.3 설정 (Engine V11.1 + Gate2 Fix)
 # ---------------------------------------------------------
-TARGET_LIQUID_COUNT = 1200
-FINAL_UNIVERSE_SIZE = 800
+# [Universe]
+TARGET_LIQUID_COUNT = 1200      # 유동성 확보 목표치
+FINAL_UNIVERSE_SIZE = 800       # 최종 선발
+
+# [Gate 1: Ultra Light]
 G1_MIN_PRICE = 5.0
 G1_MIN_DOL_VOL = 8_000_000
-G2_MIN_DD_60 = -6.0
-G2_MAX_REC_60 = 0.98
-G3_MAX_DD_252 = -12.0
-CUTOFF_SCORE = 40
+
+# [Gate 2: Fast Technical]
+G2_MIN_DD_60 = -6.0             # -6% 이하 하락
+G2_MAX_REC_60 = 0.98            # 또는 98% 이하 회복 (OR 조건 적용 예정)
+
+# [Gate 3: Hard Gate]
+G3_MAX_DD_252 = -12.0           
+CUTOFF_SCORE = 40               
+# ---------------------------------------------------------
 
 ETF_LIST = ["TQQQ", "SQQQ", "SOXL", "SOXS", "TSLL", "NVDL", "LABU", "LABD", "UVXY", "SPY", "QQQ", "IWM"]
 CORE_WATCHLIST = [
@@ -68,7 +76,7 @@ CORE_WATCHLIST = [
 ]
 
 # ==========================================
-# 1. Universe Builder
+# 1. Universe Builder (Robust Loop)
 # ==========================================
 def fetch_us_market_symbols():
     symbols = set()
@@ -100,12 +108,15 @@ def fetch_us_market_symbols():
 def build_initial_universe():
     candidates = fetch_us_market_symbols()
     candidates = list(set(candidates + CORE_WATCHLIST))
+    
     print_status(f"   📋 Raw Pool: {len(candidates)}개 -> 유동성 타겟 {TARGET_LIQUID_COUNT}개 확보 시작")
     
     scan_pool = list(set(candidates) - set(CORE_WATCHLIST))
     random.shuffle(scan_pool)
+    
     liquidity_scores = []
     
+    # Core 처리
     try:
         core_data = yf.download(CORE_WATCHLIST, period="5d", group_by='ticker', threads=True, progress=False)
         for sym in CORE_WATCHLIST:
@@ -117,12 +128,15 @@ def build_initial_universe():
             except: pass
     except: pass
 
+    # Pool Loop
     chunk_size = 200
     pool_idx = 0
+    
     while len(liquidity_scores) < TARGET_LIQUID_COUNT and pool_idx < len(scan_pool):
         chunk = scan_pool[pool_idx : pool_idx + chunk_size]
         pool_idx += chunk_size
         if not chunk: break
+        
         try:
             data = yf.download(chunk, period="5d", group_by='ticker', threads=True, progress=False)
             if isinstance(data.columns, pd.MultiIndex):
@@ -148,16 +162,18 @@ def build_initial_universe():
         
     final_universe = list(set(top_600 + random_200 + CORE_WATCHLIST))
     PIPELINE_STATS["universe_actual"] = len(final_universe)
+    
     print(f"\n✅ [Phase 1 Complete] Universe 확정: {len(final_universe)}개 (목표: {FINAL_UNIVERSE_SIZE})")
     return final_universe
 
 # ==========================================
-# 2. Gate Engines
+# 2. Gate Engines (Gate 2 Logic Fixed)
 # ==========================================
 def apply_gate_1_light(universe):
     print_status("🛡️ [Gate 1] Price/Vol Check (5D)...")
     survivors = []
     batch_size = 100
+    
     for i in range(0, len(universe), batch_size):
         batch = universe[i:i+batch_size]
         try:
@@ -178,14 +194,16 @@ def apply_gate_1_light(universe):
                     if data['Close'].mean() >= G1_MIN_PRICE and (data['Close']*data['Volume']).mean() >= G1_MIN_DOL_VOL:
                         survivors.append(batch[0])
         except: continue
+        
     PIPELINE_STATS["gate1_pass"] = len(survivors)
     print(f"   ➡️ Gate 1 Passed: {len(survivors)}")
     return survivors
 
 def apply_gate_2_fast_tech(universe):
-    print_status("🛡️ [Gate 2] Fast Technical (60D)...")
+    print_status("🛡️ [Gate 2] Fast Technical (60D) - OR Logic...")
     survivors = []
     batch_size = 100
+    
     for i in range(0, len(universe), batch_size):
         batch = universe[i:i+batch_size]
         try:
@@ -205,23 +223,29 @@ def apply_gate_2_fast_tech(universe):
                     high_60 = df['High'].max()
                     cur_price = df['Close'].iloc[-1]
                     if high_60 == 0: continue
+                    
                     dd_60 = ((cur_price - high_60) / high_60) * 100
                     rec_ratio = cur_price / high_60
-                    if dd_60 <= G2_MIN_DD_60 and rec_ratio <= G2_MAX_REC_60:
+                    
+                    # [CRITICAL FIX] AND -> OR condition
+                    # 낙폭이 충분하거나(-6% 이하), OR 아직 과열되지 않았거나(98% 이하)
+                    if dd_60 <= G2_MIN_DD_60 or rec_ratio <= G2_MAX_REC_60:
                         survivors.append(sym)
                 except: continue
         except: continue
+        
     PIPELINE_STATS["gate2_pass"] = len(survivors)
     print(f"   ➡️ Gate 2 Passed: {len(survivors)}")
     return survivors
 
 # ==========================================
-# 3. RIB V2 (Relaxed Logic)
+# 3. RIB V2 (Relaxed)
 # ==========================================
 def analyze_rib_structure(hist):
     try:
         recent = hist.tail(120).copy()
         current_price = recent["Close"].iloc[-1]
+        
         base_a_idx = recent["Close"].idxmin()
         base_a_price = recent.loc[base_a_idx]["Close"]
         
@@ -260,7 +284,7 @@ def analyze_rib_structure(hist):
         elif dist_pct <= 20.0: grade = "RADAR"
         else: grade = "IGNORE"
         
-        comps = {"struct": int(ratio*10), "comp": 10, "prox": int(30-dist_pct), "risk": 10} # Simplified for display
+        comps = {"struct": int(ratio*10), "comp": 10, "prox": int(30-dist_pct), "risk": 10}
 
         return {
             "grade": grade, "rib_score": score, 
@@ -270,16 +294,16 @@ def analyze_rib_structure(hist):
     except: return None
 
 def analyze_narrative(symbol):
-    # Dummy for speed, can be enhanced later
     return {"narrative_score": 50, "status_label": "Info", "drop_news": [], "recovery_news": []}
 
 # ==========================================
-# 4. Final Pipeline
+# 4. Final Pipeline (Gate 3 & RIB)
 # ==========================================
 def apply_gate_3_and_rib(universe):
     print_status("🛡️ [Gate 3 & RIB] Deep Analysis (1Y Data)...")
     survivors = []
     batch_size = 50 
+    
     for i in range(0, len(universe), batch_size):
         batch = universe[i:i+batch_size]
         try:
@@ -306,9 +330,10 @@ def apply_gate_3_and_rib(universe):
                     rib_data = analyze_rib_structure(df)
                     if not rib_data: continue
                     if rib_data['rib_score'] < CUTOFF_SCORE: continue
-                    PIPELINE_STATS["rib_final_pass"] += 1
                     
+                    PIPELINE_STATS["rib_final_pass"] += 1
                     narr = analyze_narrative(sym)
+                    
                     survivors.append({
                         "symbol": sym, "price": round(cur, 2), "dd": round(dd_252, 2),
                         "rib_data": rib_data, "narrative": narr
@@ -321,11 +346,11 @@ def apply_gate_3_and_rib(universe):
     return survivors
 
 # ==========================================
-# 5. Dashboard Generation (UI RESTORED)
+# 5. Dashboard Generation (UI V11.2)
 # ==========================================
 def generate_dashboard(targets):
-    action_group = [s for s in targets if s['rib_data']['grade'] in ['ACTION', 'SETUP']]
-    radar_group = [s for s in targets if s['rib_data']['grade'] == 'RADAR']
+    action = [s for s in targets if s['rib_data']['grade'] in ['ACTION', 'SETUP']]
+    radar = [s for s in targets if s['rib_data']['grade'] == 'RADAR']
     others_group = [s for s in targets if s['rib_data']['grade'] == 'IGNORE']
 
     def render_card(stock):
@@ -333,7 +358,6 @@ def generate_dashboard(targets):
         rib = stock.get("rib_data")
         narr = stock.get("narrative", {})
         
-        # Placeholder news for structure
         drop_html = "<div class='empty-msg'>📉 (Data Skipped for Speed)</div>"
         rec_html = "<div class='empty-msg'>🌱 (Data Skipped for Speed)</div>"
 
@@ -394,8 +418,8 @@ def generate_dashboard(targets):
         </div>
         """
 
-    action_syms = ",".join([s['symbol'] for s in action_group])
-    radar_syms = ",".join([s['symbol'] for s in radar_group])
+    action_syms = ",".join([s['symbol'] for s in action])
+    radar_syms = ",".join([s['symbol'] for s in radar])
     others_syms = ",".join([s['symbol'] for s in others_group])
 
     full_html = f"""
@@ -404,7 +428,7 @@ def generate_dashboard(targets):
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>SNIPER V11.2 UI Restored</title>
+        <title>SNIPER V11.3 Integrated</title>
         <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
         <script>
             function copySymbols(text, btn) {{
@@ -480,7 +504,7 @@ def generate_dashboard(targets):
     </head>
     <body>
         <div class="container">
-            <h1>SNIPER V11.2 <span style="font-size:0.6em; color:#777;">UI RESTORED</span></h1>
+            <h1>SNIPER V11.3 <span style="font-size:0.6em; color:#777;">INTEGRATED FINAL</span></h1>
             
             <div class="stats-bar">
                 Target: {PIPELINE_STATS['universe_target']} | Actual: {PIPELINE_STATS['universe_actual']} | 
@@ -490,21 +514,21 @@ def generate_dashboard(targets):
             
             <details open>
                 <summary>
-                    <span>🔥 ACTION & SETUP ({len(action_group)})</span>
+                    <span>🔥 ACTION & SETUP ({len(action)})</span>
                     <button class="copy-btn" onclick="copySymbols('{action_syms}', this)">📋 Copy</button>
                 </summary>
                 <div class="section-content">
-                    {"".join([render_card(s) for s in action_group]) if action_group else "<div style='text-align:center; color:#555; padding:20px;'>No Targets Found</div>"}
+                    {"".join([render_card(s) for s in action]) if action else "<div style='text-align:center; color:#555; padding:20px;'>No Targets Found</div>"}
                 </div>
             </details>
 
             <details>
                 <summary>
-                    <span>📡 RADAR ({len(radar_group)})</span>
+                    <span>📡 RADAR ({len(radar)})</span>
                     <button class="copy-btn" onclick="copySymbols('{radar_syms}', this)">📋 Copy</button>
                 </summary>
                 <div class="section-content">
-                    {"".join([render_card(s) for s in radar_group]) if radar_group else "<div style='text-align:center; color:#555; padding:20px;'>No Targets Found</div>"}
+                    {"".join([render_card(s) for s in radar]) if radar else "<div style='text-align:center; color:#555; padding:20px;'>No Targets Found</div>"}
                 </div>
             </details>
 
@@ -531,7 +555,7 @@ def generate_dashboard(targets):
 # ==========================================
 if __name__ == "__main__":
     try:
-        print_status("🚀 SNIPER V11.2 UI Restoration Start...")
+        print_status("🚀 SNIPER V11.3 Integrated Engine Start...")
         
         # 1. Universe
         universe = build_initial_universe()
@@ -540,7 +564,7 @@ if __name__ == "__main__":
         survivors_g1 = apply_gate_1_light(universe)
         if not survivors_g1: raise Exception("Gate 1 Kill All")
         
-        # 3. Gate 2 (Fast Tech)
+        # 3. Gate 2 (Fast Tech - OR Logic)
         survivors_g2 = apply_gate_2_fast_tech(survivors_g1)
         if not survivors_g2: raise Exception("Gate 2 Kill All")
         
