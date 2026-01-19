@@ -36,11 +36,12 @@ except ImportError:
     from deep_translator import GoogleTranslator
 
 # ---------------------------------------------------------
-# ⚙️ V10.1 설정 (Verification Config)
+# ⚙️ V10.2 설정 (Full Timeline Analysis)
 # ---------------------------------------------------------
 UNIVERSE_MAX = 150
-CUTOFF_SCORE = 65       # 최소 RIB 점수 (서사 분석 자격)
-CUTOFF_DEEP_DROP = -55  # 고점 대비 하락률 제한
+CUTOFF_SCORE = 65       
+CUTOFF_DEEP_DROP = -55  
+NARRATIVE_THRESHOLD = 70 # 서사 점수 70점 이상만 Complete 인정
 # ---------------------------------------------------------
 
 ETF_LIST = ["TQQQ", "SQQQ", "SOXL", "SOXS", "TSLL", "NVDL", "LABU", "LABD"]
@@ -85,7 +86,6 @@ def build_universe():
     
     final_universe = []
     chunk_size = 500
-    liquidity_scores = []
     scan_pool = list(set(candidates) - set(CORE_WATCHLIST))
     random.shuffle(scan_pool)
     scan_targets = CORE_WATCHLIST + scan_pool[:1000]
@@ -101,22 +101,23 @@ def build_universe():
                     if df.empty: continue
                     avg_dol_vol = (df['Close'] * df['Volume']).mean()
                     if pd.isna(avg_dol_vol): avg_dol_vol = 0
-                    liquidity_scores.append((sym, avg_dol_vol))
+                    final_universe.append((sym, avg_dol_vol))
                 except: continue
         except: continue
         print(f"   Running.. {min(i+chunk_size, len(scan_targets))}/{len(scan_targets)} verified", end="\r")
 
-    liquidity_scores.sort(key=lambda x: x[1], reverse=True)
-    top_n = liquidity_scores[:UNIVERSE_MAX]
-    final_universe = [x[0] for x in top_n]
+    final_universe.sort(key=lambda x: x[1], reverse=True)
+    top_n = [x[0] for x in final_universe[:UNIVERSE_MAX]]
+    
     for core in CORE_WATCHLIST:
-        if core not in final_universe: final_universe.append(core)
-    final_universe = list(set(final_universe))
-    print(f"\n✅ [Universe] 최종 확정: {len(final_universe)}개 종목")
-    return final_universe
+        if core not in top_n: top_n.append(core)
+    
+    final_list = list(set(top_n))
+    print(f"\n✅ [Universe] 최종 확정: {len(final_list)}개 종목")
+    return final_list
 
 # ==========================================
-# 2. RIB V2 Engine (Structure Analysis)
+# 2. RIB V2 Engine
 # ==========================================
 def calculate_structure_quality(base_a, base_b, base_a_date, base_b_date):
     try:
@@ -240,10 +241,20 @@ def analyze_reignition_structure(hist):
             priority = 4
             trigger_msg = "이격도 큼."
 
+        # High 점 구하기 (Drop Window용)
+        # Base A 이전 120일 중 최고점 날짜
+        pre_base_a = hist.loc[:base_a_idx]
+        if not pre_base_a.empty:
+            peak_idx = pre_base_a["High"].tail(120).idxmax()
+            peak_date = peak_idx.strftime("%Y-%m-%d")
+        else:
+            peak_date = (base_a_idx - timedelta(days=60)).strftime("%Y-%m-%d")
+
         return {
             "base_a": base_a_price, "base_a_date": base_a_date,
             "pivot": pivot_price, "pivot_date": pivot_date,
             "base_b": base_b_price, "base_b_date": base_b_date,
+            "peak_date": peak_date, # 낙폭 시작점
             "distance": dist_pct,
             "status": status,
             "grade": grade,
@@ -255,116 +266,160 @@ def analyze_reignition_structure(hist):
     except: return None
 
 # ==========================================
-# 3. Narrative Engine (V10.1 Fixed)
+# 3. Narrative Engine (V10.2 Client Filter)
 # ==========================================
 def classify_news_semantics(title, context_type):
     title_lower = title.lower()
     
     if context_type == "DROP":
-        if any(k in title_lower for k in ['fraud', 'investigation', 'sec probe', 'lawsuit', 'bankruptcy', 'delisting', 'scandal']):
-            return "🔴 Structural Risk", "risk"
-        if any(k in title_lower for k in ['miss', 'earnings', 'revenue', 'guidance', 'downgrade', 'cut', 'slumps']):
-            return "📉 Event Shock", "event"
+        if any(k in title_lower for k in ['fraud', 'investigation', 'sec probe', 'lawsuit', 'bankruptcy', 'delisting', 'scandal', 'breach']):
+            return "🔴 Structural Risk", "risk", 30 # 강력 악재
+        if any(k in title_lower for k in ['miss', 'earnings', 'revenue', 'guidance', 'downgrade', 'cut', 'slumps', 'plunge', 'tumble']):
+            return "📉 Event Shock", "event", 20 # 일반 악재
         if any(k in title_lower for k in ['fed', 'inflation', 'market', 'yield', 'sector']):
-            return "🌍 Macro Noise", "macro"
-        return "📉 Drop Factor", "event"
+            return "🌍 Macro Noise", "macro", 5 # 매크로
+        return "📉 Drop Factor", "event", 10
 
     elif context_type == "RECOVERY":
-        if any(k in title_lower for k in ['upgrade', 'beat', 'raise', 'partnership', 'approval', 'record', 'buyback', 'jump', 'soar']):
-            return "🟢 Recovery Signal", "good"
-        if any(k in title_lower for k in ['fall', 'drop', 'cut', 'lawsuit']):
-            return "⚠️ Risk Lingering", "bad"
-        return "⚖️ General News", "neutral"
+        # [V10.2] Recovery Keywords Expanded
+        good_kw = [
+            'upgrade', 'beat', 'raise', 'partnership', 'approval', 'record', 'buyback', 'jump', 'soar',
+            'contract', 'expansion', 'restructuring', 'cost cut', 'margin', 'profitability', 'turnaround',
+            'initiates', 'target price', 'outperform', 'rebound', 'new product'
+        ]
+        if any(k in title_lower for k in good_kw):
+            return "🟢 Recovery Signal", "good", 30
+        
+        if any(k in title_lower for k in ['fall', 'drop', 'cut', 'lawsuit', 'sell']):
+            return "⚠️ Risk Lingering", "bad", -10
+            
+        return "⚖️ General News", "neutral", 0
     
-    return "News", "neutral"
+    return "News", "neutral", 0
 
-def fetch_narrative_news(symbol, start_date, end_date, context_type):
+def fetch_filtered_news(symbol, start_date, end_date, context_type):
+    """
+    [V10.2] Client-Side Date Filtering
+    RSS에서 많이(20개) 긁어온 뒤, 코드에서 날짜로 정밀 타격
+    """
     items = []
     try:
-        query = f"{symbol} stock"
-        if start_date: query += f" after:{start_date}"
-        if end_date: query += f" before:{end_date}"
-        
-        url = f"https://news.google.com/rss/search?q={query}&hl=en-US&gl=US&ceid=US:en"
-        resp = requests.get(url, timeout=4)
+        # 쿼리 단순화 (날짜 제거, 종목명만) -> 구글은 최신순으로 줌
+        # 하지만 우리는 많이 받아서 필터링 할 것임
+        url = f"https://news.google.com/rss/search?q={symbol}+stock&hl=en-US&gl=US&ceid=US:en"
+        resp = requests.get(url, timeout=5)
         
         if resp.status_code == 200:
             root = ET.fromstring(resp.content)
             translator = GoogleTranslator(source='auto', target='ko')
             
-            # [HOTFIX] 안전을 위해 최대 5개로 확장하여 날짜 필터링 확률 증가
-            for item in root.findall('./channel/item')[:5]: 
-                title = item.find('title').text.rsplit(" - ", 1)[0]
-                pubDate = item.find('pubDate').text[:16]
-                link = item.find('link').text
-                
-                try: title_ko = translator.translate(title)
-                except: title_ko = title
-                
-                cat_text, cat_type = classify_news_semantics(title, context_type)
-                
-                if context_type == "DROP" and cat_type == "macro":
-                    continue 
+            # 파싱용 날짜 포맷
+            # RSS pubDate 예: "Mon, 19 Jan 2026 10:00:00 GMT"
+            
+            target_start = datetime.strptime(start_date, "%Y-%m-%d")
+            # end_date가 None이면 오늘까지
+            target_end = datetime.strptime(end_date, "%Y-%m-%d") if end_date else datetime.now()
+            
+            count = 0
+            # [V10.2] 최대 20개까지 스캔 (과거 뉴스 찾기 위해)
+            for item in root.findall('./channel/item')[:20]: 
+                try:
+                    pubDateStr = item.find('pubDate').text
+                    # 날짜 파싱 (유연하게)
+                    try:
+                        pubDate = datetime.strptime(pubDateStr[:16], "%a, %d %b %Y")
+                    except: continue # 날짜 포맷 다르면 패스
 
-                items.append({
-                    "title": title, "title_ko": title_ko, "link": link, 
-                    "date": pubDate, "category": cat_text, "type": cat_type
-                })
+                    # 날짜 필터링 (핵심)
+                    # DROP: target_start <= article_date <= target_end
+                    # REC: target_start <= article_date
+                    if not (target_start <= pubDate <= target_end + timedelta(days=1)):
+                        continue
+
+                    title = item.find('title').text.rsplit(" - ", 1)[0]
+                    link = item.find('link').text
+                    
+                    # 제목 중복 제거 (Set 사용 추천하지만 간단하게 리스트 체크)
+                    if any(x['title'] == title for x in items): continue
+
+                    try: title_ko = translator.translate(title)
+                    except: title_ko = title
+                    
+                    cat_text, cat_type, weight = classify_news_semantics(title, context_type)
+                    
+                    # Macro는 Drop 원인으로 약함
+                    if context_type == "DROP" and cat_type == "macro": continue
+
+                    items.append({
+                        "title": title, "title_ko": title_ko, "link": link, 
+                        "date": pubDate.strftime("%Y-%m-%d"), 
+                        "category": cat_text, "type": cat_type, "weight": weight
+                    })
+                    
+                    count += 1
+                    if count >= 3: break # 기간별 유효 뉴스 3개만 확보하면 됨
+                except: continue
     except: pass
     return items
 
-def analyze_narrative_completeness(symbol, rib_data):
-    # [HOTFIX] Crash 방지를 위한 기본값 정의
+def analyze_narrative_score(symbol, rib_data):
+    """
+    [V10.2] Narrative Scoring System
+    단순 OX가 아니라, (Drop Weight + Recovery Weight) = Narrative Score (0~100)
+    """
     empty_result = {
-        "drop_news": [],
-        "recovery_news": [],
-        "is_complete": False,
-        "status_label": "⚠️ Data Unavailable"
+        "drop_news": [], "recovery_news": [], 
+        "narrative_score": 0, "is_complete": False, "status_label": "⚠️ No Data"
     }
-    
     if not rib_data: return empty_result
     
     try:
+        # 1. Drop Period: Peak Date(고점) ~ Base A + 3일 (하락 구간 전체)
+        drop_start = rib_data['peak_date']
         dt_a = datetime.strptime(rib_data['base_a_date'], "%Y-%m-%d")
-        dt_b = datetime.strptime(rib_data['base_b_date'], "%Y-%m-%d")
+        drop_end = (dt_a + timedelta(days=3)).strftime("%Y-%m-%d")
         
-        # [HOTFIX] Drop 기간 확장 (10일 -> 15일)
-        drop_start = (dt_a - timedelta(days=15)).strftime("%Y-%m-%d")
-        drop_end = (dt_a + timedelta(days=5)).strftime("%Y-%m-%d")
-        
+        # 2. Recovery Period: Base B ~ Now
         rec_start = rib_data['base_b_date']
         
-        drop_news = fetch_narrative_news(symbol, drop_start, drop_end, "DROP")
-        rec_news = fetch_narrative_news(symbol, rec_start, None, "RECOVERY")
+        drop_news = fetch_filtered_news(symbol, drop_start, drop_end, "DROP")
+        rec_news = fetch_filtered_news(symbol, rec_start, None, "RECOVERY")
         
-        has_drop_cause = len(drop_news) > 0
-        has_recovery_signal = False
+        # Scoring
+        drop_score = sum(n['weight'] for n in drop_news)
+        rec_score = sum(n['weight'] for n in rec_news)
         
-        for n in rec_news:
-            if n['type'] == 'good': has_recovery_signal = True
+        # Normalize (각 최대 50점)
+        drop_final = min(50, drop_score)
+        rec_final = min(50, rec_score)
         
-        is_complete = has_drop_cause and has_recovery_signal
+        total_score = drop_final + rec_final
+        
+        # [V10.2] Logic: 악재도 있고 호재도 있어야 진짜 (둘 중 하나라도 0이면 감점)
+        if drop_final == 0 or rec_final == 0:
+            total_score = total_score * 0.5 # 페널티
+            
+        is_complete = total_score >= NARRATIVE_THRESHOLD
         
         return {
             "drop_news": drop_news,
             "recovery_news": rec_news,
+            "narrative_score": int(total_score),
             "is_complete": is_complete,
-            "status_label": "✅ Narrative Complete" if is_complete else "⚠️ Narrative Incomplete"
+            "status_label": f"✅ Narrative ({int(total_score)})" if is_complete else f"⚠️ Weak ({int(total_score)})"
         }
-    except Exception as e:
-        # 에러 발생 시에도 빈 구조체 반환하여 크래시 방지
-        return empty_result
+    except: return empty_result
 
 # ==========================================
 # 4. Main Scan Logic
 # ==========================================
 def run_scan():
-    print_status("🧠 [Brain] Turnaround Sniper V10.1 (Verified Engine) 가동...")
+    print_status("🧠 [Brain] Turnaround Sniper V10.2 (Full Timeline) 가동...")
     
     universe = build_universe()
     survivors = []
     
-    print(f"\n🔍 서사 기반 정밀 스캔 시작 ({len(universe)}개 종목)...")
+    print(f"\n🔍 서사 정밀 스캔 시작 ({len(universe)}개 종목)...")
 
     for i, sym in enumerate(universe):
         try:
@@ -385,7 +440,8 @@ def run_scan():
             
             if rib_data['rib_score'] < CUTOFF_SCORE: continue
 
-            narrative = analyze_narrative_completeness(sym, rib_data)
+            # Narrative Analysis (V10.2)
+            narrative = analyze_narrative_score(sym, rib_data)
             
             survivors.append({
                 "symbol": sym, "price": round(cur, 2), "dd": round(dd, 2),
@@ -396,9 +452,9 @@ def run_scan():
 
         except: continue
 
-    # [HOTFIX] 정렬 시 키 에러 방지를 위한 안전 접근
+    # 정렬: 1순위 서사점수 -> 2순위 RIB등급 -> 3순위 RIB점수
     survivors.sort(key=lambda x: (
-        0 if x.get('narrative', {}).get('is_complete', False) else 1,
+        -x['narrative']['narrative_score'],
         x['rib_data'].get('priority', 99), 
         -x['rib_data'].get('rib_score', 0)
     ))
@@ -410,9 +466,9 @@ def run_scan():
 # 5. Dashboard Generation
 # ==========================================
 def generate_dashboard(targets):
-    # 안전한 그룹 분리
-    complete_group = [s for s in targets if s.get('narrative', {}).get('is_complete', False)]
-    incomplete_group = [s for s in targets if not s.get('narrative', {}).get('is_complete', False)]
+    # Score Threshold로 그룹 분리
+    complete_group = [s for s in targets if s['narrative']['is_complete']]
+    incomplete_group = [s for s in targets if not s['narrative']['is_complete']]
 
     def render_card(stock):
         sym = stock['symbol']
@@ -430,7 +486,7 @@ def generate_dashboard(targets):
                 <a href="{n['link']}" target="_blank">{n['title_ko']}</a>
             </div>
             """
-        if not drop_html: drop_html = "<div class='empty-msg'>📉 과거 데이터 없음 (Google RSS 제한)</div>"
+        if not drop_html: drop_html = "<div class='empty-msg'>📉 기간 내 중요 뉴스 없음 (Clean Drop?)</div>"
 
         # Recovery News
         rec_html = ""
@@ -443,7 +499,7 @@ def generate_dashboard(targets):
                 <a href="{n['link']}" target="_blank">{n['title_ko']}</a>
             </div>
             """
-        if not rec_html: rec_html = "<div class='empty-msg'>🌱 회복 뉴스 없음</div>"
+        if not rec_html: rec_html = "<div class='empty-msg'>🌱 회복 시그널 부족</div>"
 
         chart_id = f"tv_{sym}_{random.randint(1000,9999)}"
         grade = rib.get("grade", "N/A")
@@ -471,8 +527,10 @@ def generate_dashboard(targets):
         </div>
         """
 
-        is_complete = narr.get('is_complete', False)
+        narr_score = narr.get('narrative_score', 0)
         status_label = narr.get('status_label', 'Unknown')
+        
+        badge_class = 'complete' if narr.get('is_complete') else 'incomplete'
 
         return f"""
         <div class="card">
@@ -481,11 +539,11 @@ def generate_dashboard(targets):
                 <span class="name">{stock.get('name','')}</span>
                 <span class="price">${stock.get('price',0)}</span>
                 <span class="dd-badge">{stock.get('dd',0):.1f}%</span>
-                <span class="narrative-badge { 'complete' if is_complete else 'incomplete' }">{status_label}</span>
+                <span class="narrative-badge {badge_class}">{status_label}</span>
             </div>
             <div class="card-body-grid">
                 <div class="col-drop">
-                    <div class="col-title">📉 DROP CAUSE</div>
+                    <div class="col-title">📉 DROP CAUSE ({rib.get('peak_date','')}~)</div>
                     {drop_html}
                 </div>
                 <div class="col-chart">
@@ -501,7 +559,7 @@ def generate_dashboard(targets):
                     {rib_html}
                 </div>
                 <div class="col-rec">
-                    <div class="col-title">🌱 RECOVERY SIGNAL</div>
+                    <div class="col-title">🌱 RECOVERY SIGNAL ({rib.get('base_b_date','')}~)</div>
                     {rec_html}
                 </div>
             </div>
@@ -513,7 +571,7 @@ def generate_dashboard(targets):
     <html>
     <head>
         <meta charset="utf-8">
-        <title>Sniper V10.1 Verified Engine</title>
+        <title>Sniper V10.2 Full Timeline</title>
         <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
         <style>
             body {{ background: #131722; color: #d1d4dc; font-family: 'Segoe UI', sans-serif; padding: 20px; margin: 0; }}
@@ -560,7 +618,10 @@ def generate_dashboard(targets):
     </head>
     <body>
         <div class="container">
-            <h1>SNIPER V10.1 <span style="font-size:0.6em; color:#aaa;">VERIFIED ENGINE</span></h1>
+            <h1>SNIPER V10.2 <span style="font-size:0.6em; color:#aaa;">FULL TIMELINE</span></h1>
+            <div style="text-align:center; color:#777; margin-bottom:20px;">
+                ⚙️ Config: Score>={CUTOFF_SCORE} | Narrative>={NARRATIVE_THRESHOLD} | Full History Scan
+            </div>
             
             <details open>
                 <summary>✅ NARRATIVE COMPLETE ({len(complete_group)}) - 서사 완성 종목 (강력 추천)</summary>
@@ -570,7 +631,7 @@ def generate_dashboard(targets):
             </details>
 
             <details>
-                <summary>⚠️ NARRATIVE INCOMPLETE ({len(incomplete_group)}) - 서사 부족 / 단순 반등</summary>
+                <summary>⚠️ NARRATIVE WEAK ({len(incomplete_group)}) - 서사 부족 / 단순 반등</summary>
                 <div class="section-content">
                     {"".join([render_card(s) for s in incomplete_group])}
                 </div>
