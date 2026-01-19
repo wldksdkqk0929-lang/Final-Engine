@@ -36,17 +36,25 @@ except ImportError:
     subprocess.check_call([sys.executable, "-m", "pip", "install", "deep-translator"])
     from deep_translator import GoogleTranslator
 
-# 번역 캐시 (중복 방지)
+# 번역 캐시
 TRANSLATION_CACHE = {}
 
 # ---------------------------------------------------------
-# ⚙️ V10.5 설정 (Structure First / Full Universe / Optimization)
+# ⚙️ V10.6 설정 (Hard Gate & Logic Config)
 # ---------------------------------------------------------
-UNIVERSE_TOP_FIXED = 150    # 유동성 최상위 고정
-UNIVERSE_RANDOM = 200       # 유동성 차상위 랜덤 샘플
-CUTOFF_SCORE = 65           # 최소 RIB 점수
-CUTOFF_DEEP_DROP = -55      # 지하실 컷
-NEWS_SCAN_THRESHOLD = 75    # 이 점수 이상이거나 ACTION/SETUP일 때만 뉴스 검색
+# [1] Universe Construction
+UNIVERSE_TOP_FIXED = 150        # 유동성 최상위 고정 선발
+UNIVERSE_RANDOM = 200           # 차상위 그룹 랜덤 선발
+LIQUIDITY_LOOKBACK_DAYS = 5     # 유동성/가격 확인용 조회 기간
+
+# [2] Hard Gate Filters (진입 장벽)
+MIN_PRICE = 4.0                 # 최소 주가 ($4.0)
+MIN_AVG_DOLLAR_VOLUME = 5_000_000 # 최소 일평균 거래대금 ($5M)
+
+# [3] Analysis Filters
+CUTOFF_SCORE = 65               # RIB Score 최소 컷
+CUTOFF_DEEP_DROP = -55          # 지하실 컷 (-55% 이하 탈락)
+NEWS_SCAN_THRESHOLD = 75        # 뉴스 정밀 분석 트리거 점수
 # ---------------------------------------------------------
 
 ETF_LIST = ["TQQQ", "SQQQ", "SOXL", "SOXS", "TSLL", "NVDL", "LABU", "LABD"]
@@ -56,11 +64,10 @@ CORE_WATCHLIST = [
 ]
 
 # ==========================================
-# 1. Universe Builder (US Full Market)
+# 1. Universe Builder (Hard Gate Applied)
 # ==========================================
 def fetch_us_market_symbols():
     symbols = set()
-    # NASDAQ + Other Listed (NYSE/AMEX etc)
     urls = [
         "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt",
         "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt"
@@ -72,14 +79,10 @@ def fetch_us_market_symbols():
             resp = requests.get(url, timeout=10)
             if resp.status_code == 200:
                 df = pd.read_csv(StringIO(resp.text), sep="|")
-                # 필터: Test Issue 제거, ETF 제거
                 if 'Test Issue' in df.columns: df = df[df['Test Issue'] == 'N']
                 if 'ETF' in df.columns: df = df[df['ETF'] == 'N']
                 
                 raw_syms = df['Symbol'].dropna().astype(str).tolist()
-                
-                # 정규식 필터: 알파벳+점(.) 허용, 길이 1~5 (예: BRK.B 허용)
-                # 기존 isalpha()는 '.'을 거부하므로 정규식으로 변경
                 valid_pattern = re.compile(r"^[A-Z\.]+$")
                 
                 for s in raw_syms:
@@ -93,61 +96,81 @@ def fetch_us_market_symbols():
     return list(symbols)
 
 def build_universe():
-    print_status("🏗️ [Universe Builder] 유동성 기반 풀 구성 (Top + Random)...")
+    print_status("🏗️ [Universe Builder] Hard Gate 검증 및 유니버스 구축...")
     
     candidates = fetch_us_market_symbols()
     if len(candidates) < 100:
         print_status("⚠️ 데이터 부족. 기본 리스트 사용.")
         candidates = list(set(CORE_WATCHLIST + ["AAPL", "MSFT", "TSLA", "NVDA", "AMD", "AMZN", "GOOGL"]))
     else:
-        # Core는 무조건 포함
         candidates = list(set(candidates + CORE_WATCHLIST))
 
-    print(f"   📋 1차 후보군: {len(candidates)}개 -> 유동성 분석 시작 (Batch)...")
-    
-    # 유동성 분석을 위한 배치 다운로드 (최근 5일치만)
-    liquidity_scores = []
-    
-    # API 호출 최적화를 위해 전체 다 하지 않고, Core + 랜덤 1000개만 샘플링해서 유동성 체크
-    # (전수조사는 시간이 너무 걸림)
+    # 스캔 대상 풀 설정 (Core + Random 2000개)
+    # Hard Gate 통과율을 고려하여 넉넉하게 스캔
     scan_pool = list(set(candidates) - set(CORE_WATCHLIST))
     random.shuffle(scan_pool)
-    check_targets = CORE_WATCHLIST + scan_pool[:1200] 
+    check_targets = CORE_WATCHLIST + scan_pool[:2000] 
     
-    chunk_size = 400 # 덩어리로 요청
+    print(f"   📋 1차 후보: {len(candidates)}개 -> Gate 검증 대상: {len(check_targets)}개")
+    
+    liquidity_scores = []
+    stats = {"Raw": len(check_targets), "Data_OK": 0, "Pass_Gate": 0, "Fail_Price": 0, "Fail_Vol": 0}
+    
+    chunk_size = 400 
     for i in range(0, len(check_targets), chunk_size):
         chunk = check_targets[i:i+chunk_size]
         try:
             # 배치 다운로드
             data = yf.download(chunk, period="5d", group_by='ticker', threads=True, progress=False)
             
-            # yfinance 결과 처리 (MultiIndex vs Single)
+            # 처리 로직 (Single vs Multi)
             if len(chunk) == 1:
-                # 단일 종목일 경우 구조가 다름, 리스트로 감싸서 처리
-                sym = chunk[0]
-                if not data.empty:
-                    avg_vol = (data['Close'] * data['Volume']).mean()
-                    liquidity_scores.append((sym, 0 if pd.isna(avg_vol) else avg_vol))
+                chunk_syms = chunk
+                chunk_data = {chunk[0]: data}
             else:
-                # 다중 종목
-                for sym in chunk:
-                    try:
-                        df = data[sym]
-                        if df.empty: continue
-                        avg_vol = (df['Close'] * df['Volume']).mean()
-                        liquidity_scores.append((sym, 0 if pd.isna(avg_vol) else avg_vol))
-                    except: continue
-        except: continue
-        print(f"   ⚖️ Liquidity Check: {min(i+chunk_size, len(check_targets))}/{len(check_targets)}", end="\r")
+                chunk_syms = chunk
+                chunk_data = {sym: data[sym] for sym in chunk if sym in data.columns.levels[0]}
 
-    # 정렬 및 선별 (이원화 전략)
+            for sym in chunk_syms:
+                try:
+                    df = chunk_data.get(sym)
+                    if df is None or df.empty: continue
+                    
+                    # 데이터 유효성 확인
+                    if len(df) < 3: continue
+                    stats["Data_OK"] += 1
+                    
+                    # [Hard Gate 1] Price Cut
+                    avg_close = df['Close'].mean()
+                    if avg_close < MIN_PRICE:
+                        stats["Fail_Price"] += 1
+                        continue
+                        
+                    # [Hard Gate 2] Dollar Volume Cut
+                    avg_dol_vol = (df['Close'] * df['Volume']).mean()
+                    if avg_dol_vol < MIN_AVG_DOLLAR_VOLUME:
+                        stats["Fail_Vol"] += 1
+                        continue
+                    
+                    # Pass
+                    stats["Pass_Gate"] += 1
+                    liquidity_scores.append((sym, avg_dol_vol))
+                    
+                except: continue
+        except: continue
+        print(f"   🛡️ Hard Gate: {min(i+chunk_size, len(check_targets))}/{len(check_targets)} Checked..", end="\r")
+
+    # 결과 로그 출력
+    print(f"\n   📊 [Gate Result] DataOK: {stats['Data_OK']} | ❌ Price(<${MIN_PRICE}): {stats['Fail_Price']} | ❌ Vol(<${MIN_AVG_DOLLAR_VOLUME/1000000:.1f}M): {stats['Fail_Vol']} | ✅ Pass: {stats['Pass_Gate']}")
+
+    # 정렬 및 선별
     liquidity_scores.sort(key=lambda x: x[1], reverse=True)
     
-    # 1. Top Fixed (상위 150개)
+    # 1. Top Fixed
     top_fixed = [x[0] for x in liquidity_scores[:UNIVERSE_TOP_FIXED]]
     
-    # 2. Random Sample (그 다음 구간 450개 중 200개 랜덤)
-    next_pool = [x[0] for x in liquidity_scores[UNIVERSE_TOP_FIXED : UNIVERSE_TOP_FIXED+450]]
+    # 2. Random Sample from Next
+    next_pool = [x[0] for x in liquidity_scores[UNIVERSE_TOP_FIXED : UNIVERSE_TOP_FIXED+600]]
     if len(next_pool) > UNIVERSE_RANDOM:
         random_picked = random.sample(next_pool, UNIVERSE_RANDOM)
     else:
@@ -156,7 +179,7 @@ def build_universe():
     final_set = set(top_fixed + random_picked + CORE_WATCHLIST)
     final_list = list(final_set)
     
-    print(f"\n✅ [Universe] 최종 확정: {len(final_list)}개 (Top {UNIVERSE_TOP_FIXED} + Random {len(random_picked)} + Core)")
+    print(f"✅ [Universe] 최종 확정: {len(final_list)}개 (Top {UNIVERSE_TOP_FIXED} + Random {len(random_picked)} + Core)")
     return final_list
 
 # ==========================================
@@ -313,7 +336,7 @@ def analyze_reignition_structure(hist):
     except: return None
 
 # ==========================================
-# 3. Narrative Engine (Optimized & Cached)
+# 3. Narrative Engine (Optimized)
 # ==========================================
 def translate_cached(text, translator):
     if text in TRANSLATION_CACHE:
@@ -402,45 +425,39 @@ def analyze_narrative_score(symbol, rib_data):
 # 4. Main Scan Logic (Batch Optimized)
 # ==========================================
 def run_scan():
-    print_status("🧠 [Brain] SNIPER V10.5 (Optimized Batch Scan) 가동...")
+    print_status("🧠 [Brain] SNIPER V10.6 (Hard Gate Activated) 가동...")
     
     universe = build_universe()
     survivors = []
     
     print(f"\n🔍 배치 스캔 시작 ({len(universe)}개)...")
     
-    batch_size = 50 # yfinance 최적화 배치 사이즈
+    batch_size = 50 
     
     for i in range(0, len(universe), batch_size):
         batch = universe[i:i+batch_size]
         print(f"   🚀 Scanning Batch {i//batch_size + 1} ({len(batch)} symbols)...", end="\r")
         
         try:
-            # 1년치 데이터 한 번에 다운로드
             data = yf.download(batch, period="1y", group_by='ticker', threads=True, progress=False)
             
             for sym in batch:
                 try:
-                    # 데이터 추출
                     if len(batch) == 1: df = data
                     else: df = data[sym]
                     
-                    if len(df) < 230: continue # 데이터 부족
+                    if len(df) < 230: continue 
                     
-                    # 1. Basic Filters
                     high_120 = df["High"].tail(120).max()
                     cur = df["Close"].iloc[-1]
                     dd = ((cur - high_120) / high_120) * 100
                     
                     if dd <= CUTOFF_DEEP_DROP: continue
                     
-                    # 2. RIB Analysis
                     rib_data = analyze_reignition_structure(df)
                     if not rib_data: continue
                     if rib_data['rib_score'] < CUTOFF_SCORE: continue
 
-                    # 3. Narrative Analysis (조건부 실행 - 최적화)
-                    # 점수가 높거나 등급이 좋은 경우만 뉴스 검색
                     grade = rib_data.get('grade', 'IGNORE')
                     score = rib_data.get('rib_score', 0)
                     
@@ -451,7 +468,7 @@ def run_scan():
                     
                     survivors.append({
                         "symbol": sym, "price": round(cur, 2), "dd": round(dd, 2),
-                        "name": sym, # yfinance 배치에서는 info 가져오기 어려움 (속도 저하 원인)
+                        "name": sym, 
                         "rib_data": rib_data,
                         "narrative": narrative
                     })
@@ -468,7 +485,7 @@ def run_scan():
     return survivors
 
 # ==========================================
-# 5. Dashboard Generation (Copy Button Added)
+# 5. Dashboard Generation
 # ==========================================
 def generate_dashboard(targets):
     action_group = [s for s in targets if s['rib_data']['grade'] in ['ACTION', 'SETUP']]
@@ -551,7 +568,6 @@ def generate_dashboard(targets):
         </div>
         """
 
-    # Group Symbols for Copy Button
     action_syms = ",".join([s['symbol'] for s in action_group])
     radar_syms = ",".join([s['symbol'] for s in radar_group])
     others_syms = ",".join([s['symbol'] for s in others_group])
@@ -561,7 +577,7 @@ def generate_dashboard(targets):
     <html>
     <head>
         <meta charset="utf-8">
-        <title>Sniper V10.5 US Full Universe</title>
+        <title>Sniper V10.6 Hard Gate</title>
         <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
         <script>
             function copySymbols(text, btn) {{
@@ -571,7 +587,7 @@ def generate_dashboard(targets):
                     btn.innerText = "✅ Copied!";
                     setTimeout(() => btn.innerText = original, 2000);
                 }});
-                event.stopPropagation(); // Prevent detail toggle
+                event.stopPropagation();
             }}
         </script>
         <style>
@@ -619,10 +635,10 @@ def generate_dashboard(targets):
     </head>
     <body>
         <div class="container">
-            <h1>SNIPER V10.5 <span style="font-size:0.6em; color:#aaa;">US FULL UNIVERSE / COPY PIPELINE</span></h1>
+            <h1>SNIPER V10.6 <span style="font-size:0.6em; color:#aaa;">HARD GATE ACTIVATED</span></h1>
             
             <div style="text-align:center; color:#777; margin-bottom:20px; font-size:0.9em;">
-                ⚙️ Mode: US Market (Nasdaq/NYSE/Amex) | Batch Scan | Top Liquid + Random
+                ⚙️ Gate: Price >= ${MIN_PRICE} | Vol >= ${MIN_AVG_DOLLAR_VOLUME/1000000}M | RIB Score >= {CUTOFF_SCORE}
             </div>
             
             <details open>
