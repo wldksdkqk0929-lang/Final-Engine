@@ -40,20 +40,21 @@ except ImportError:
 TRANSLATION_CACHE = {}
 
 # ---------------------------------------------------------
-# ⚙️ V10.7 설정 (Hard Gate Refined)
+# ⚙️ V10.8 설정 (Parameter Tuning & Stability)
 # ---------------------------------------------------------
 # [1] Universe Basic
 UNIVERSE_TOP_FIXED = 150
 UNIVERSE_RANDOM = 200
 
-# [2] TURNAROUND HARD GATE (Entry Barriers)
-GATE_MIN_PRICE = 4.0            # 최소 주가 $4.0
-GATE_MIN_DOL_VOL = 5_000_000    # 최소 거래대금 $5M
-GATE_MAX_DD_252 = -25.0         # 1년 고점 대비 최소 -25% 하락 필수 (성장주 차단)
-GATE_MAX_REC_60 = 0.90          # 60일 고점 대비 90% 이하 위치 (단기 과열/V반등 완료 차단)
+# [2] TURNAROUND HARD GATE (Relaxed)
+GATE_MIN_PRICE = 4.0            
+GATE_MIN_DOL_VOL = 5_000_000    
+GATE_MAX_DD_252 = -12.0         # (완화) -25% -> -12%
+GATE_MAX_REC_60 = 0.95          # (완화) 0.90 -> 0.95
 
 # [3] Analysis Filters
-CUTOFF_SCORE = 65               # RIB Score 최소 컷
+CUTOFF_SCORE = 50               # (완화) 65 -> 50
+NEWS_SCAN_THRESHOLD = 60        # 뉴스 검색 기준도 완화
 # ---------------------------------------------------------
 
 ETF_LIST = ["TQQQ", "SQQQ", "SOXL", "SOXS", "TSLL", "NVDL", "LABU", "LABD"]
@@ -100,10 +101,9 @@ def build_universe():
     else:
         candidates = list(set(candidates + CORE_WATCHLIST))
 
-    # 스캔 대상 풀 설정
     scan_pool = list(set(candidates) - set(CORE_WATCHLIST))
     random.shuffle(scan_pool)
-    check_targets = CORE_WATCHLIST + scan_pool[:2000] # 유동성 체크용 샘플링
+    check_targets = CORE_WATCHLIST + scan_pool[:2000] 
     
     liquidity_scores = []
     chunk_size = 400
@@ -113,21 +113,24 @@ def build_universe():
         try:
             data = yf.download(chunk, period="5d", group_by='ticker', threads=True, progress=False)
             
-            if len(chunk) == 1:
-                chunk_syms = chunk
-                chunk_data = {chunk[0]: data}
-            else:
-                chunk_syms = chunk
-                chunk_data = {sym: data[sym] for sym in chunk if sym in data.columns.levels[0]}
-
-            for sym in chunk_syms:
-                try:
-                    df = chunk_data.get(sym)
-                    if df is None or df.empty: continue
-                    avg_dol_vol = (df['Close'] * df['Volume']).mean()
-                    if pd.isna(avg_dol_vol): avg_dol_vol = 0
-                    liquidity_scores.append((sym, avg_dol_vol))
-                except: continue
+            # Safe Handling for MultiIndex
+            is_multi = isinstance(data.columns, pd.MultiIndex)
+            
+            if not is_multi and len(chunk) == 1:
+                sym = chunk[0]
+                if not data.empty:
+                    avg_vol = (data['Close'] * data['Volume']).mean()
+                    liquidity_scores.append((sym, 0 if pd.isna(avg_vol) else avg_vol))
+            elif is_multi:
+                # Iterate through columns level 0 (Tickers)
+                # data.columns.levels[0] contains tickers present in data
+                present_tickers = data.columns.levels[0]
+                for sym in chunk:
+                    if sym in present_tickers:
+                        df = data[sym]
+                        if df.empty: continue
+                        avg_vol = (df['Close'] * df['Volume']).mean()
+                        liquidity_scores.append((sym, 0 if pd.isna(avg_vol) else avg_vol))
         except: continue
         print(f"   ⚖️ Liquidity Check: {min(i+chunk_size, len(check_targets))}/{len(check_targets)}", end="\r")
 
@@ -145,20 +148,16 @@ def build_universe():
     return final_list
 
 # ==========================================
-# 2. Hard Gate Logic (New V10.7)
+# 2. Hard Gate Logic (Refined & Relaxed)
 # ==========================================
 def check_turnaround_gate(hist):
-    """
-    [V10.7] Turnaround Hard Gate
-    구조적 붕괴 여부와 단기 과열 여부를 정밀 타격
-    """
     try:
-        # 데이터 길이 체크 (1년치 필수)
+        # [Stability Fix] Ensure data length
         if len(hist) < 252:
             return False, "Data < 252d", 0, 0
 
         current_price = hist["Close"].iloc[-1]
-        current_vol = hist["Volume"].tail(5).mean() # 최근 5일 평균 거래량
+        current_vol = hist["Volume"].tail(5).mean()
         avg_dol_vol = current_price * current_vol
 
         # 1. Price Gate
@@ -169,20 +168,18 @@ def check_turnaround_gate(hist):
         if avg_dol_vol < GATE_MIN_DOL_VOL:
             return False, "Low Liquidity", 0, 0
 
-        # 3. Structural Crash Gate (252일 고점 대비 낙폭)
+        # 3. Structural Crash Gate (Relaxed to -12%)
         high_252 = hist["High"].tail(252).max()
         dd_252 = ((current_price - high_252) / high_252) * 100
         
-        # -25%보다 덜 빠졌으면(예: -10%) 탈락. "충분히 망가지지 않음"
         if dd_252 > GATE_MAX_DD_252: 
             return False, f"Not Crashed ({dd_252:.1f}%)", dd_252, 0
 
-        # 4. Overheat Gate (60일 고점 대비 회복률)
+        # 4. Overheat Gate (Relaxed to 95%)
         high_60 = hist["High"].tail(60).max()
         if high_60 == 0: return False, "Data Error", 0, 0
         recovery_ratio = current_price / high_60
         
-        # 고점 대비 90% 이상 올라와 있으면(거의 V자 완료) 탈락. "먹을 거 없음"
         if recovery_ratio > GATE_MAX_REC_60:
             return False, f"Overheated ({recovery_ratio:.2f})", dd_252, recovery_ratio
 
@@ -425,11 +422,11 @@ def analyze_narrative_score(symbol, rib_data):
     except: return empty_result
 
 # ==========================================
-# 5. Main Scan Logic (Hard Gate Applied)
+# 5. Main Scan Logic (Stability Patched)
 # ==========================================
 def run_scan():
-    print_status("🧠 [Brain] SNIPER V10.7 (Hard Gate Activated) 가동...")
-    print(f"🛡️ Gates: Price>${GATE_MIN_PRICE} | DD252<={GATE_MAX_DD_252}% | Rec60<={GATE_MAX_REC_60*100}%")
+    print_status("🧠 [Brain] SNIPER V10.8 (Tuning & Stability Patch) 가동...")
+    print(f"🛡️ Gates: DD<={GATE_MAX_DD_252}% | Rec<={GATE_MAX_REC_60*100:.0f}% | Score>={CUTOFF_SCORE}")
     
     universe = build_universe()
     survivors = []
@@ -448,17 +445,31 @@ def run_scan():
         print(f"   🚀 Scanning Batch {i//batch_size + 1} ({len(batch)} symbols)...", end="\r")
         
         try:
-            # 1년치 데이터 다운로드 (252일 Gate 체크를 위해 필수)
+            # 1년치 데이터 다운로드
             data = yf.download(batch, period="1y", group_by='ticker', threads=True, progress=False)
             
-            for sym in batch:
+            # [Stability Fix] MultiIndex 처리 및 심볼 존재 확인 강화
+            is_multi = isinstance(data.columns, pd.MultiIndex)
+            
+            # 현재 배치에서 유효한 심볼 목록 추출
+            if is_multi:
+                valid_symbols = [s for s in batch if s in data.columns.levels[0]]
+            else:
+                valid_symbols = batch if not data.empty else []
+
+            for sym in valid_symbols:
                 try:
-                    if len(batch) == 1: df = data
-                    else: df = data[sym]
+                    if is_multi:
+                        df = data[sym].copy().dropna()
+                    else:
+                        df = data.copy().dropna()
+                    
+                    # [Stability Fix] 데이터 길이 체크 강화
+                    if df.empty or len(df) < 252: continue
                     
                     stats["Total"] += 1
                     
-                    # [V10.7] Hard Gate Check
+                    # Hard Gate Check
                     passed, reason, dd_val, rec_val = check_turnaround_gate(df)
                     
                     if not passed:
@@ -480,14 +491,19 @@ def run_scan():
                         stats["Fail_RIB"] += 1
                         continue
 
-                    # Narrative
-                    narrative = analyze_narrative_score(sym, rib_data)
+                    # Narrative Analysis (조건부 실행)
+                    grade = rib_data.get('grade', 'IGNORE')
+                    score = rib_data.get('rib_score', 0)
+                    
+                    narrative = {"drop_news": [], "recovery_news": [], "narrative_score": 0, "status_label": "Skipped"}
+                    
+                    if score >= NEWS_SCAN_THRESHOLD or grade in ['ACTION', 'SETUP', 'RADAR']:
+                        narrative = analyze_narrative_score(sym, rib_data)
                     
                     cur = df["Close"].iloc[-1]
-                    dd = ((cur - df["High"].max()) / df["High"].max()) * 100
                     
                     survivors.append({
-                        "symbol": sym, "price": round(cur, 2), "dd": round(dd_val, 2), # 252일 기준 DD 표기
+                        "symbol": sym, "price": round(cur, 2), "dd": round(dd_val, 2),
                         "name": sym, 
                         "rib_data": rib_data,
                         "narrative": narrative
@@ -498,10 +514,10 @@ def run_scan():
 
     print(f"\n" + "="*50)
     print(f"📊 [GATE REPORT] Total Scanned: {stats['Total']}")
-    print(f"   ❌ Price Cut (<$4): {stats['Fail_Price']}")
-    print(f"   ❌ Vol Cut (<$5M): {stats['Fail_Vol']}")
-    print(f"   📉 DD252 Cut (Not Crashed): {stats['Fail_DD252']} (Rising/Stable Stocks Removed)")
-    print(f"   🛑 Rec60 Cut (Overheated): {stats['Fail_Rec60']} (V-Shape Completed Removed)")
+    print(f"   ❌ Price Cut (<${GATE_MIN_PRICE}): {stats['Fail_Price']}")
+    print(f"   ❌ Vol Cut (<${GATE_MIN_DOL_VOL/1000000:.1f}M): {stats['Fail_Vol']}")
+    print(f"   📉 DD252 Cut (Not Crashed): {stats['Fail_DD252']}")
+    print(f"   🛑 Rec60 Cut (Overheated): {stats['Fail_Rec60']}")
     print(f"   ✅ Gate Passed: {stats['Gate_Pass']}")
     print(f"   🧩 RIB Filtered: {stats['Fail_RIB']}")
     print(f"   🏆 Survivors: {stats['Final']}")
@@ -608,7 +624,7 @@ def generate_dashboard(targets):
     <html>
     <head>
         <meta charset="utf-8">
-        <title>Sniper V10.7 Hard Gate</title>
+        <title>Sniper V10.8 Stability</title>
         <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
         <script>
             function copySymbols(text, btn) {{
@@ -666,7 +682,7 @@ def generate_dashboard(targets):
     </head>
     <body>
         <div class="container">
-            <h1>SNIPER V10.7 <span style="font-size:0.6em; color:#aaa;">HARD GATE ACTIVATED</span></h1>
+            <h1>SNIPER V10.8 <span style="font-size:0.6em; color:#aaa;">TUNING & STABILITY</span></h1>
             
             <div style="text-align:center; color:#777; margin-bottom:20px; font-size:0.9em;">
                 🛡️ Gates: Price>${GATE_MIN_PRICE} | DD(252Y) <= {GATE_MAX_DD_252}% | Rec(60D) <= {GATE_MAX_REC_60*100:.0f}%
