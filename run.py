@@ -36,12 +36,11 @@ except ImportError:
     from deep_translator import GoogleTranslator
 
 # ---------------------------------------------------------
-# ⚙️ V10.3 설정 (Structure First Strategy)
+# ⚙️ V10.4 설정 (One Line Strategy)
 # ---------------------------------------------------------
 UNIVERSE_MAX = 150
-CUTOFF_SCORE = 65       # RIB Score (구조 점수) 최소 컷
-CUTOFF_DEEP_DROP = -55  # 지하실 종목 컷
-# Note: Narrative Threshold는 필터링에 쓰지 않고 배지 표시에만 사용
+CUTOFF_SCORE = 65       
+CUTOFF_DEEP_DROP = -55  
 # ---------------------------------------------------------
 
 ETF_LIST = ["TQQQ", "SQQQ", "SOXL", "SOXS", "TSLL", "NVDL", "LABU", "LABD"]
@@ -117,7 +116,7 @@ def build_universe():
     return final_list
 
 # ==========================================
-# 2. RIB V2 Engine (Structure First)
+# 2. RIB V2 Engine
 # ==========================================
 def calculate_structure_quality(base_a, base_b, base_a_date, base_b_date):
     try:
@@ -206,7 +205,6 @@ def analyze_reignition_structure(hist):
         if base_b_price < base_a_price: return {"status": "INVALID_LOW", "rib_score": 0}
         if current_price < base_b_price: return {"status": "INVALID_BROKEN", "rib_score": 0}
 
-        # V10.3 RIB Scoring
         s_struct = calculate_structure_quality(base_a_price, base_b_price, base_a_date, base_b_date)
         s_comp = calculate_compression_energy(hist)
         s_prox = calculate_breakout_proximity(current_price, pivot_price, hist)
@@ -242,7 +240,6 @@ def analyze_reignition_structure(hist):
             priority = 4
             trigger_msg = "이격도 큼."
 
-        # High point for Drop Window
         pre_base_a = hist.loc[:base_a_idx]
         if not pre_base_a.empty:
             peak_idx = pre_base_a["High"].tail(120).idxmax()
@@ -266,7 +263,7 @@ def analyze_reignition_structure(hist):
     except: return None
 
 # ==========================================
-# 3. Narrative Engine (Support Layer)
+# 3. Narrative Engine (Support)
 # ==========================================
 def classify_news_semantics(title, context_type):
     title_lower = title.lower()
@@ -345,10 +342,6 @@ def fetch_filtered_news(symbol, start_date, end_date, context_type):
     return items
 
 def analyze_narrative_score(symbol, rib_data):
-    """
-    [V10.3] Relaxed Narrative Scoring
-    서사는 '필터'가 아니라 '점수'로만 존재. 감점 로직 제거.
-    """
     empty_result = {
         "drop_news": [], "recovery_news": [], 
         "narrative_score": 0, "status_label": "⚠️ Info Needed"
@@ -370,8 +363,6 @@ def analyze_narrative_score(symbol, rib_data):
         
         total_score = min(50, drop_score) + min(50, rec_score)
         
-        # [V10.3] 감점 로직 제거. 점수만 산출.
-        # Labeling for Badge
         if total_score >= 60: label = f"🔥 Strong ({total_score})"
         elif total_score >= 30: label = f"⚖️ Neutral ({total_score})"
         else: label = f"⚠️ Weak ({total_score})"
@@ -388,7 +379,7 @@ def analyze_narrative_score(symbol, rib_data):
 # 4. Main Scan Logic
 # ==========================================
 def run_scan():
-    print_status("🧠 [Brain] Turnaround Sniper V10.3 (Structure First) 가동...")
+    print_status("🧠 [Brain] Turnaround Sniper V10.4 (One Line Strategy) 가동...")
     
     universe = build_universe()
     survivors = []
@@ -400,24 +391,20 @@ def run_scan():
             print(f"   Scanning [{i+1}/{len(universe)}] {sym:<5}", end="\r")
             
             t = yf.Ticker(sym)
-            hist = t.history(period="1y") # 224일선 위해 1년치 필요
-            if len(hist) < 230: continue # 224MA 계산 최소치
+            hist = t.history(period="1y") 
+            if len(hist) < 230: continue 
             
-            # 1. Basic Filters
             high_120 = hist["High"].tail(120).max()
             cur = hist["Close"].iloc[-1]
             dd = ((cur - high_120) / high_120) * 100
             
             if dd <= CUTOFF_DEEP_DROP: continue
             
-            # 2. RIB Analysis (Core Filter)
             rib_data = analyze_reignition_structure(hist)
             if not rib_data: continue
             
-            # [V10.3] RIB Score Filter Only
             if rib_data['rib_score'] < CUTOFF_SCORE: continue
 
-            # 3. Narrative Analysis (Support Info)
             narrative = analyze_narrative_score(sym, rib_data)
             
             survivors.append({
@@ -429,7 +416,6 @@ def run_scan():
 
         except: continue
 
-    # 정렬: 1순위 RIB Priority -> 2순위 RIB Score -> 3순위 Narrative Score
     survivors.sort(key=lambda x: (
         x['rib_data'].get('priority', 99), 
         -x['rib_data'].get('rib_score', 0),
@@ -440,20 +426,18 @@ def run_scan():
     return survivors
 
 # ==========================================
-# 5. Dashboard Generation (Structure First Layout)
+# 5. Dashboard Generation (Structure First + 224MA)
 # ==========================================
 def generate_dashboard(targets):
-    # [V10.3] Group by RIB Grade (Structure First)
     action_group = [s for s in targets if s['rib_data']['grade'] == 'ACTION' or s['rib_data']['grade'] == 'SETUP']
     radar_group = [s for s in targets if s['rib_data']['grade'] == 'RADAR']
-    others_group = [s for s in targets if s['rib_data']['grade'] == 'IGNORE'] # Rescue case
+    others_group = [s for s in targets if s['rib_data']['grade'] == 'IGNORE'] 
 
     def render_card(stock):
         sym = stock['symbol']
         rib = stock.get("rib_data")
         narr = stock.get("narrative", {})
         
-        # News Rendering
         drop_html = ""
         for n in narr.get('drop_news', []):
             tag_color = "#c0392b" if n['type'] == 'risk' else "#e67e22"
@@ -474,10 +458,9 @@ def generate_dashboard(targets):
         narr_score = narr.get('narrative_score', 0)
         status_label = narr.get('status_label', 'Unknown')
         
-        # Narrative Badge Color Logic
         narr_badge_color = "#555"
-        if narr_score >= 60: narr_badge_color = "#27ae60" # Green
-        elif narr_score >= 30: narr_badge_color = "#f39c12" # Orange
+        if narr_score >= 60: narr_badge_color = "#27ae60" 
+        elif narr_score >= 30: narr_badge_color = "#f39c12" 
         
         return f"""
         <div class="card">
@@ -502,15 +485,13 @@ def generate_dashboard(targets):
                                 "style": "1", "locale": "en", "hide_top_toolbar": true, "hide_legend": true, 
                                 "container_id": "{chart_id}",
                                 "studies": [
-                                    "MASimple@tv-basicstudies", 
                                     "MAExp@tv-basicstudies"
                                 ],
                                 "studies_overrides": {{
-                                    "MASimple@tv-basicstudies.length": 224,
-                                    "MASimple@tv-basicstudies.plot.color": "#FFFF00",
-                                    "MASimple@tv-basicstudies.plot.linewidth": 3,
-                                    "MAExp@tv-basicstudies.length": 20,
-                                    "MAExp@tv-basicstudies.plot.color": "#00FFFF"
+                                    "MAExp@tv-basicstudies.length": 224,
+                                    "MAExp@tv-basicstudies.plot.color": "#FFB000",
+                                    "MAExp@tv-basicstudies.plot.linewidth": 5,
+                                    "MAExp@tv-basicstudies.plot.transparency": 10
                                 }}
                             }});
                         </script>
@@ -542,7 +523,7 @@ def generate_dashboard(targets):
     <html>
     <head>
         <meta charset="utf-8">
-        <title>Sniper V10.3 Structure First</title>
+        <title>Sniper V10.4 One Line</title>
         <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
         <style>
             body {{ background: #131722; color: #d1d4dc; font-family: 'Segoe UI', sans-serif; padding: 20px; margin: 0; }}
@@ -585,7 +566,7 @@ def generate_dashboard(targets):
     </head>
     <body>
         <div class="container">
-            <h1>SNIPER V10.3 <span style="font-size:0.6em; color:#aaa;">STRUCTURE FIRST + 224MA</span></h1>
+            <h1>SNIPER V10.4 <span style="font-size:0.6em; color:#aaa;">STRUCTURE FIRST + EMA 224</span></h1>
             
             <details open>
                 <summary>🔥 ACTION & SETUP ({len(action_group)}) - 즉시 대응 및 대기 영역</summary>
