@@ -40,21 +40,21 @@ except ImportError:
 TRANSLATION_CACHE = {}
 
 # ---------------------------------------------------------
-# ⚙️ V10.8 설정 (Parameter Tuning & Stability)
+# ⚙️ V10.9 설정 (Conflict Resolution)
 # ---------------------------------------------------------
 # [1] Universe Basic
 UNIVERSE_TOP_FIXED = 150
 UNIVERSE_RANDOM = 200
 
-# [2] TURNAROUND HARD GATE (Relaxed)
+# [2] TURNAROUND HARD GATE (Logical Fix)
 GATE_MIN_PRICE = 4.0            
 GATE_MIN_DOL_VOL = 5_000_000    
-GATE_MAX_DD_252 = -12.0         # (완화) -25% -> -12%
-GATE_MAX_REC_60 = 0.95          # (완화) 0.90 -> 0.95
+GATE_MAX_DD_252 = -12.0         # 최소 -12% 하락 (유지)
+GATE_MAX_REC_60 = 1.05          # (수정) 0.95 -> 1.05 : 과열 제한 대폭 완화 (구조 형성 허용)
 
 # [3] Analysis Filters
-CUTOFF_SCORE = 50               # (완화) 65 -> 50
-NEWS_SCAN_THRESHOLD = 60        # 뉴스 검색 기준도 완화
+CUTOFF_SCORE = 40               # (수정) 50 -> 40 : 현실적 점수 반영
+NEWS_SCAN_THRESHOLD = 50        # 뉴스 검색 기준도 하향
 # ---------------------------------------------------------
 
 ETF_LIST = ["TQQQ", "SQQQ", "SOXL", "SOXS", "TSLL", "NVDL", "LABU", "LABD"]
@@ -113,7 +113,6 @@ def build_universe():
         try:
             data = yf.download(chunk, period="5d", group_by='ticker', threads=True, progress=False)
             
-            # Safe Handling for MultiIndex
             is_multi = isinstance(data.columns, pd.MultiIndex)
             
             if not is_multi and len(chunk) == 1:
@@ -122,8 +121,6 @@ def build_universe():
                     avg_vol = (data['Close'] * data['Volume']).mean()
                     liquidity_scores.append((sym, 0 if pd.isna(avg_vol) else avg_vol))
             elif is_multi:
-                # Iterate through columns level 0 (Tickers)
-                # data.columns.levels[0] contains tickers present in data
                 present_tickers = data.columns.levels[0]
                 for sym in chunk:
                     if sym in present_tickers:
@@ -148,11 +145,11 @@ def build_universe():
     return final_list
 
 # ==========================================
-# 2. Hard Gate Logic (Refined & Relaxed)
+# 2. Hard Gate Logic (Conflict Resolved)
 # ==========================================
 def check_turnaround_gate(hist):
     try:
-        # [Stability Fix] Ensure data length
+        # [Fix] 2년치 데이터 고려, 최소 252일
         if len(hist) < 252:
             return False, "Data < 252d", 0, 0
 
@@ -168,18 +165,19 @@ def check_turnaround_gate(hist):
         if avg_dol_vol < GATE_MIN_DOL_VOL:
             return False, "Low Liquidity", 0, 0
 
-        # 3. Structural Crash Gate (Relaxed to -12%)
+        # 3. Structural Crash Gate
         high_252 = hist["High"].tail(252).max()
         dd_252 = ((current_price - high_252) / high_252) * 100
         
         if dd_252 > GATE_MAX_DD_252: 
             return False, f"Not Crashed ({dd_252:.1f}%)", dd_252, 0
 
-        # 4. Overheat Gate (Relaxed to 95%)
+        # 4. Overheat Gate (Relaxed)
         high_60 = hist["High"].tail(60).max()
         if high_60 == 0: return False, "Data Error", 0, 0
         recovery_ratio = current_price / high_60
         
+        # [Fix] 1.05로 완화하여 돌파 직후 종목도 허용
         if recovery_ratio > GATE_MAX_REC_60:
             return False, f"Overheated ({recovery_ratio:.2f})", dd_252, recovery_ratio
 
@@ -318,9 +316,11 @@ def analyze_reignition_structure(hist):
             priority = 4
             trigger_msg = "이격도 큼."
 
+        # [Fix] 2년치 데이터에서 고점 찾기 (Peak Date)
         pre_base_a = hist.loc[:base_a_idx]
         if not pre_base_a.empty:
-            peak_idx = pre_base_a["High"].tail(120).idxmax()
+            # 120일보다 더 넓게(252일) 탐색
+            peak_idx = pre_base_a["High"].tail(252).idxmax()
             peak_date = peak_idx.strftime("%Y-%m-%d")
         else:
             peak_date = (base_a_idx - timedelta(days=60)).strftime("%Y-%m-%d")
@@ -422,10 +422,10 @@ def analyze_narrative_score(symbol, rib_data):
     except: return empty_result
 
 # ==========================================
-# 5. Main Scan Logic (Stability Patched)
+# 5. Main Scan Logic (Period Extended)
 # ==========================================
 def run_scan():
-    print_status("🧠 [Brain] SNIPER V10.8 (Tuning & Stability Patch) 가동...")
+    print_status("🧠 [Brain] SNIPER V10.9 (Conflict Resolved) 가동...")
     print(f"🛡️ Gates: DD<={GATE_MAX_DD_252}% | Rec<={GATE_MAX_REC_60*100:.0f}% | Score>={CUTOFF_SCORE}")
     
     universe = build_universe()
@@ -438,20 +438,17 @@ def run_scan():
     }
     
     batch_size = 50 
-    print(f"\n🔍 Gate 통과 정밀 분석 시작...")
+    print(f"\n🔍 Gate 통과 정밀 분석 시작 (2년 데이터)...")
     
     for i in range(0, len(universe), batch_size):
         batch = universe[i:i+batch_size]
         print(f"   🚀 Scanning Batch {i//batch_size + 1} ({len(batch)} symbols)...", end="\r")
         
         try:
-            # 1년치 데이터 다운로드
-            data = yf.download(batch, period="1y", group_by='ticker', threads=True, progress=False)
+            # [Fix] 2년치 데이터로 확장하여 구조 인식률 향상
+            data = yf.download(batch, period="2y", group_by='ticker', threads=True, progress=False)
             
-            # [Stability Fix] MultiIndex 처리 및 심볼 존재 확인 강화
             is_multi = isinstance(data.columns, pd.MultiIndex)
-            
-            # 현재 배치에서 유효한 심볼 목록 추출
             if is_multi:
                 valid_symbols = [s for s in batch if s in data.columns.levels[0]]
             else:
@@ -464,7 +461,6 @@ def run_scan():
                     else:
                         df = data.copy().dropna()
                     
-                    # [Stability Fix] 데이터 길이 체크 강화
                     if df.empty or len(df) < 252: continue
                     
                     stats["Total"] += 1
@@ -491,7 +487,7 @@ def run_scan():
                         stats["Fail_RIB"] += 1
                         continue
 
-                    # Narrative Analysis (조건부 실행)
+                    # Narrative Analysis
                     grade = rib_data.get('grade', 'IGNORE')
                     score = rib_data.get('rib_score', 0)
                     
@@ -519,7 +515,7 @@ def run_scan():
     print(f"   📉 DD252 Cut (Not Crashed): {stats['Fail_DD252']}")
     print(f"   🛑 Rec60 Cut (Overheated): {stats['Fail_Rec60']}")
     print(f"   ✅ Gate Passed: {stats['Gate_Pass']}")
-    print(f"   🧩 RIB Filtered: {stats['Fail_RIB']}")
+    print(f"   🧩 RIB Filtered (Score<{CUTOFF_SCORE}): {stats['Fail_RIB']}")
     print(f"   🏆 Survivors: {stats['Final']}")
     print("="*50)
 
@@ -624,7 +620,7 @@ def generate_dashboard(targets):
     <html>
     <head>
         <meta charset="utf-8">
-        <title>Sniper V10.8 Stability</title>
+        <title>Sniper V10.9 Conflict Resolved</title>
         <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
         <script>
             function copySymbols(text, btn) {{
@@ -682,7 +678,7 @@ def generate_dashboard(targets):
     </head>
     <body>
         <div class="container">
-            <h1>SNIPER V10.8 <span style="font-size:0.6em; color:#aaa;">TUNING & STABILITY</span></h1>
+            <h1>SNIPER V10.9 <span style="font-size:0.6em; color:#aaa;">CONFLICT RESOLVED</span></h1>
             
             <div style="text-align:center; color:#777; margin-bottom:20px; font-size:0.9em;">
                 🛡️ Gates: Price>${GATE_MIN_PRICE} | DD(252Y) <= {GATE_MAX_DD_252}% | Rec(60D) <= {GATE_MAX_REC_60*100:.0f}%
