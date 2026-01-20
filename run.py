@@ -51,7 +51,7 @@ PIPELINE_STATS = {
 }
 
 # ---------------------------------------------------------
-# ⚙️ V11.4 설정 (News Reactivated)
+# ⚙️ V11.5 설정 (News Detail Upgrade)
 # ---------------------------------------------------------
 TARGET_LIQUID_COUNT = 1200
 FINAL_UNIVERSE_SIZE = 800
@@ -219,7 +219,7 @@ def apply_gate_2_fast_tech(universe):
     return survivors
 
 # ==========================================
-# 3. RIB V2 & News Engine (Reactivated)
+# 3. RIB V2 & Advanced News Engine (V11.5)
 # ==========================================
 def analyze_rib_structure(hist):
     try:
@@ -265,7 +265,6 @@ def analyze_rib_structure(hist):
         
         comps = {"struct": int(ratio*10), "comp": 10, "prox": int(30-dist_pct), "risk": 10}
         
-        # Peak Date Logic for News
         pre_base_a = hist.loc[:base_a_idx]
         if not pre_base_a.empty:
             peak_idx = pre_base_a["High"].tail(252).idxmax()
@@ -282,7 +281,7 @@ def analyze_rib_structure(hist):
         }
     except: return None
 
-# [News Logic - Reactivated]
+# [News Logic - V11.5 Detail Upgrade]
 def translate_cached(text, translator):
     if text in TRANSLATION_CACHE: return TRANSLATION_CACHE[text]
     try:
@@ -305,9 +304,8 @@ def classify_news(title, n_type):
 def fetch_news(symbol, start, end, n_type):
     items = []
     try:
-        # RSS Query: Simple
         url = f"https://news.google.com/rss/search?q={symbol}+stock&hl=en-US&gl=US&ceid=US:en"
-        resp = requests.get(url, timeout=4) # Short timeout
+        resp = requests.get(url, timeout=3) # Strict timeout
         if resp.status_code == 200:
             root = ET.fromstring(resp.content)
             translator = GoogleTranslator(source='auto', target='ko')
@@ -315,37 +313,54 @@ def fetch_news(symbol, start, end, n_type):
             t_end = datetime.strptime(end, "%Y-%m-%d") if end else datetime.now()
             
             count = 0
-            for item in root.findall('./channel/item')[:20]: # Check top 20
+            for item in root.findall('./channel/item')[:20]:
                 try:
-                    pDate = datetime.strptime(item.find('pubDate').text[:16], "%a, %d %b %Y")
+                    pDateStr = item.find('pubDate').text
+                    pDate = datetime.strptime(pDateStr[:16], "%a, %d %b %Y")
                     # Date Filter
                     if not (t_start <= pDate <= t_end + timedelta(days=1)): continue
                     
-                    title = item.find('title').text.rsplit(" - ", 1)[0]
+                    title_en = item.find('title').text.rsplit(" - ", 1)[0]
                     link = item.find('link').text
                     
-                    # Duplicate check
-                    if any(x['title'] == title for x in items): continue
+                    if any(x['title_en'] == title_en for x in items): continue
                     
-                    t_ko = translate_cached(title, translator)
-                    cat, c_type, w = classify_news(title, n_type)
+                    title_ko = translate_cached(title_en, translator)
+                    cat, c_type, w = classify_news(title_en, n_type)
                     
-                    items.append({"title": title, "title_ko": t_ko, "link": link, "date": pDate.strftime("%Y-%m-%d"), "category": cat, "type": c_type, "weight": w})
+                    items.append({
+                        "published_date": pDate.strftime("%Y-%m-%d"),
+                        "title_en": title_en,
+                        "title_ko": title_ko,
+                        "link": link,
+                        "category": cat, 
+                        "type": c_type, 
+                        "weight": w
+                    })
                     count += 1
-                    if count >= 3: break # Max 3 items per type
+                    if count >= 3: break # Max 3 per type
                 except: continue
+                
+            # Sort by date
+            # DROP: Oldest first (to see root cause)
+            # RECOVERY: Newest first (to see latest signal)
+            if n_type == "DROP":
+                items.sort(key=lambda x: x['published_date'])
+            else:
+                items.sort(key=lambda x: x['published_date'], reverse=True)
+                
     except: pass
     return items
 
 def analyze_narrative(symbol, rib_data):
-    # [Smart Execution] Only scan news for ACTION/SETUP to save time
-    if rib_data['grade'] not in ['ACTION', 'SETUP']:
-        return {"narrative_score": 0, "status_label": "Skipped (Low Tier)", "drop_news": [], "recovery_news": []}
+    # [Target Lock] Only scan Final Survivors
+    if rib_data['rib_score'] < CUTOFF_SCORE:
+        return {"narrative_score": 0, "status_label": "Low Score", "drop_news": [], "recovery_news": []}
     
     PIPELINE_STATS["news_scanned"] += 1
     try:
-        # Drop News: Peak -> Base A + 5d
-        drop_end = (datetime.strptime(rib_data['base_a_date'], "%Y-%m-%d") + timedelta(days=5)).strftime("%Y-%m-%d")
+        # Drop News: Peak -> Base A + 10d
+        drop_end = (datetime.strptime(rib_data['base_a_date'], "%Y-%m-%d") + timedelta(days=10)).strftime("%Y-%m-%d")
         d_news = fetch_news(symbol, rib_data['peak_date'], drop_end, "DROP")
         
         # Recovery News: Base B -> Now
@@ -355,7 +370,7 @@ def analyze_narrative(symbol, rib_data):
         r_score = sum(n['weight'] for n in r_news)
         total = min(50, d_score) + min(50, r_score)
         
-        lbl = f"🔥 Strong ({total})" if total >= 50 else f"⚖️ Neutral ({total})"
+        lbl = f"Narrative {total}"
         return {"narrative_score": int(total), "status_label": lbl, "drop_news": d_news, "recovery_news": r_news}
     except: 
         return {"narrative_score": 0, "status_label": "Error", "drop_news": [], "recovery_news": []}
@@ -395,8 +410,9 @@ def apply_gate_3_and_rib(universe):
                     if rib_data['rib_score'] < CUTOFF_SCORE: continue
                     PIPELINE_STATS["rib_final_pass"] += 1
                     
-                    # [Fix] Pass full rib_data for date logic
+                    # News Engine Called Here
                     narr = analyze_narrative(sym, rib_data)
+                    
                     survivors.append({
                         "symbol": sym, "price": round(cur, 2), "dd": round(dd_252, 2),
                         "rib_data": rib_data, "narrative": narr
@@ -409,7 +425,7 @@ def apply_gate_3_and_rib(universe):
     return survivors
 
 # ==========================================
-# 5. Dashboard Generation (UI V11.2 + News Rendering)
+# 5. Dashboard Generation (V11.5 Detail Upgrade)
 # ==========================================
 def generate_dashboard(targets):
     action = [s for s in targets if s['rib_data']['grade'] in ['ACTION', 'SETUP']]
@@ -421,27 +437,38 @@ def generate_dashboard(targets):
         rib = stock.get("rib_data")
         narr = stock.get("narrative", {})
         
-        # [Fix] Real News Rendering
+        # [UI Upgrade] Stacked News Display
+        drop_html = ""
         if narr.get('drop_news'):
-            drop_html = ""
             for n in narr['drop_news']:
                 tag_c = "#c0392b" if n['type'] == 'risk' else "#e67e22"
-                drop_html += f"<div class='news-item'><span class='news-tag' style='background:{tag_c}'>{n['category']}</span><a href='{n['link']}' target='_blank'>{n['title_ko']}</a></div>"
-        else: 
-            drop_html = "<div class='empty-msg'>📉 No significant drop news found</div>"
+                drop_html += f"""
+                <div class='news-item'>
+                    <div class='news-meta'>
+                        <span class='news-date'>{n['published_date']}</span>
+                        <span class='news-tag' style='background:{tag_c}'>{n['category']}</span>
+                    </div>
+                    <div class='news-title-en'>{n['title_en']}</div>
+                    <div class='news-title-ko'><a href='{n['link']}' target='_blank'>{n['title_ko']}</a></div>
+                </div>
+                """
+        else: drop_html = "<div class='empty-msg'>📉 No significant drop news found</div>"
 
+        rec_html = ""
         if narr.get('recovery_news'):
-            rec_html = ""
             for n in narr['recovery_news']:
                 tag_c = "#27ae60" if n['type'] == 'good' else "#7f8c8d"
-                rec_html += f"<div class='news-item'><span class='news-tag' style='background:{tag_c}'>{n['category']}</span><a href='{n['link']}' target='_blank'>{n['title_ko']}</a></div>"
-        else:
-            rec_html = "<div class='empty-msg'>🌱 No significant recovery news found</div>"
-
-        # Skipped Logic Display
-        if "Skipped" in narr.get('status_label', ''):
-            drop_html = "<div class='empty-msg'>Measurement Skipped (Low Tier)</div>"
-            rec_html = "<div class='empty-msg'>Measurement Skipped (Low Tier)</div>"
+                rec_html += f"""
+                <div class='news-item'>
+                    <div class='news-meta'>
+                        <span class='news-date'>{n['published_date']}</span>
+                        <span class='news-tag' style='background:{tag_c}'>{n['category']}</span>
+                    </div>
+                    <div class='news-title-en'>{n['title_en']}</div>
+                    <div class='news-title-ko'><a href='{n['link']}' target='_blank'>{n['title_ko']}</a></div>
+                </div>
+                """
+        else: rec_html = "<div class='empty-msg'>🌱 No significant recovery news found</div>"
 
         chart_id = f"tv_{sym}_{random.randint(1000,9999)}"
         grade = rib.get("grade", "N/A")
@@ -510,7 +537,7 @@ def generate_dashboard(targets):
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>SNIPER V11.4 News Active</title>
+        <title>SNIPER V11.5 News Detail</title>
         <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
         <script>
             function copySymbols(text, btn) {{
@@ -549,31 +576,36 @@ def generate_dashboard(targets):
             .price {{ font-size: 1rem; font-weight: bold; color: #ddd; }}
             .badge {{ padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; color: #fff; background: #444; }}
 
-            /* 3-Column Grid Layout (Desktop) */
-            .card-body-grid {{ display: grid; grid-template-columns: 1fr 1.4fr 1fr; height: 360px; }}
+            /* 3-Column Grid Layout */
+            .card-body-grid {{ display: grid; grid-template-columns: 1fr 1.4fr 1fr; height: 400px; }}
             
             .col-drop {{ border-right: 1px solid var(--border-color); padding: 15px; overflow-y: auto; background: rgba(192, 57, 43, 0.05); }}
             .col-chart {{ padding: 0; display: flex; flex-direction: column; border-right: 1px solid var(--border-color); }}
             .col-rec {{ padding: 15px; overflow-y: auto; background: rgba(39, 174, 96, 0.05); }}
             
-            .col-title {{ font-size: 0.8rem; font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid #444; padding-bottom: 5px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }}
+            .col-title {{ font-size: 0.8rem; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #444; padding-bottom: 5px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }}
             
-            .news-item {{ margin-bottom: 8px; font-size: 0.85rem; line-height: 1.3; }}
-            .news-tag {{ color: #fff; padding: 2px 5px; border-radius: 3px; font-size: 0.7rem; margin-right: 5px; display: inline-block; margin-bottom: 2px; }}
-            .news-item a {{ color: #ccc; text-decoration: none; transition: color 0.2s; }}
-            .news-item a:hover {{ color: #fff; text-decoration: underline; }}
+            /* News Item Styling */
+            .news-item {{ margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #2a2e39; }}
+            .news-item:last-child {{ border-bottom: none; }}
+            .news-meta {{ display: flex; align-items: center; margin-bottom: 4px; font-size: 0.75rem; color: #888; }}
+            .news-date {{ margin-right: 8px; }}
+            .news-tag {{ padding: 2px 6px; border-radius: 3px; font-size: 0.7rem; color: #fff; font-weight: bold; }}
+            .news-title-en {{ font-size: 0.85rem; color: #aaa; margin-bottom: 2px; line-height: 1.2; font-style: italic; }}
+            .news-title-ko a {{ font-size: 0.9rem; color: #ddd; font-weight: bold; text-decoration: none; line-height: 1.3; display: block; }}
+            .news-title-ko a:hover {{ color: #fff; text-decoration: underline; color: var(--accent); }}
             .empty-msg {{ font-style: italic; color: #555; font-size: 0.8rem; text-align: center; margin-top: 30px; }}
 
             .rib-stat-box {{ background: var(--card-bg); padding: 10px; flex-grow: 1; display: flex; flex-direction: column; justify-content: center; }}
             .rib-msg {{ color: var(--accent); font-size: 0.9rem; text-align: center; margin-top: 8px; font-style: italic; font-weight: bold; }}
             
-            /* Mobile Responsive (Galaxy Fold & Phones) */
+            /* Mobile Responsive */
             @media (max-width: 768px) {{ 
                 .container {{ padding: 10px; }}
                 h1 {{ font-size: 1.5rem; }}
                 .stats-bar {{ font-size: 0.8rem; overflow-x: scroll; }}
                 .card-body-grid {{ grid-template-columns: 1fr; height: auto; display: block; }}
-                .col-drop, .col-rec {{ height: auto; max-height: 150px; border-right: none; border-bottom: 1px solid var(--border-color); }}
+                .col-drop, .col-rec {{ height: auto; max-height: 200px; border-right: none; border-bottom: 1px solid var(--border-color); }}
                 .col-chart {{ border-right: none; border-bottom: 1px solid var(--border-color); }}
                 .tradingview-widget-container {{ height: 250px; }}
                 .rib-stat-box {{ padding: 15px; }}
@@ -582,7 +614,7 @@ def generate_dashboard(targets):
     </head>
     <body>
         <div class="container">
-            <h1>SNIPER V11.4 <span style="font-size:0.6em; color:#777;">NEWS REACTIVATED</span></h1>
+            <h1>SNIPER V11.5 <span style="font-size:0.6em; color:#777;">NEWS DETAIL UPGRADE</span></h1>
             
             <div class="stats-bar">
                 Target: {PIPELINE_STATS['universe_target']} | Actual: {PIPELINE_STATS['universe_actual']} | 
@@ -634,7 +666,7 @@ def generate_dashboard(targets):
 # ==========================================
 if __name__ == "__main__":
     try:
-        print_status("🚀 SNIPER V11.4 News Reactivated Start...")
+        print_status("🚀 SNIPER V11.5 News Detail Upgrade Start...")
         
         # 1. Universe
         universe = build_initial_universe()
