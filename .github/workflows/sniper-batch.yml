@@ -24,10 +24,17 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      # ✅ 실행 방식 변경 (핵심)
+      # 🔍 현재 디렉토리 및 파일 구조 확인 (디버그용)
+      - name: Debug workspace
+        run: |
+          pwd
+          ls -al
+          ls -al ./scripts || true
+
+      # ✅ 경로 명시 실행
       - name: Run Sniper Batch
         run: |
-          python scripts/run_batch_cli.py
+          python ./scripts/run_batch_cli.py
 
       - name: Upload Logs
         if: always()
