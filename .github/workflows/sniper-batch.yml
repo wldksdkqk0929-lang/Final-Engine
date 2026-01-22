@@ -24,6 +24,11 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
+      # 🔑 핵심 수정 포인트
+      - name: Set PYTHONPATH
+        run: |
+          echo "PYTHONPATH=$(pwd)" >> $GITHUB_ENV
+
       - name: Run Sniper Batch
         run: |
           python -m scripts.run_batch_cli
