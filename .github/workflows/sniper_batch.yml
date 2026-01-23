@@ -2,8 +2,8 @@ name: Sniper Batch Pipeline
 
 on:
   schedule:
-    # TEST: Rapid Pulse - every 5 minutes (Smoke Test)
-    - cron: '*/5 * * * *'
+    # LIVE: Weekdays 08:50 KST (UTC 23:50, Sun-Thu UTC = Mon-Fri KST)
+    - cron: '50 23 * * 0-4'
   workflow_dispatch:
 
 jobs:
