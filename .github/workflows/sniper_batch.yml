@@ -1,59 +1,29 @@
-name: SNIPER V12 Batch Engine
+name: Sniper Batch Pipeline
 
 on:
   schedule:
-    # Run at 21:00 UTC (06:00 KST) every day
-    - cron: '0 21 * * *'
-  workflow_dispatch: # Allow manual trigger
-
-permissions:
-  contents: write # [Safety 3] Explicit Permissions
+    # TEST: Rapid Pulse - every 5 minutes (Smoke Test)
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
 
 jobs:
-  run-sniper:
+  sniper-batch:
     runs-on: ubuntu-latest
-    
+
     steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v3
-      
-    - name: Setup Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
-        
-    - name: Install Dependencies & Engine
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e .
-        
-    - name: Run Sniper Batch
-      env:
-        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      run: |
-        # [Standard Command]
-        python -m scripts.run_batch_cli
-        
-    - name: Run Retention Cleanup
-      run: |
-        python -m scripts.cleanup
-        
-    - name: Commit and Push Results
-      run: |
-        git config user.name "Sniper Bot"
-        git config user.email "bot@sniper.v12"
-        
-        # Add all data changes
-        git add data/
-        
-        # [Safety 1] Conditional Commit
-        if [[ -n $(git status --porcelain) ]]; then
-          echo "Changes detected. Committing..."
-          git commit -m "🤖 [AUTO] Sniper Batch Run - $(date +'%Y-%m-%d')"
-          
-          # [Safety 2] Rebase First
-          git pull --rebase
-          git push
-        else
-          echo "No changes detected. Skipping commit."
-        fi
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install package (editable)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Run batch CLI
+        run: |
+          python -m scripts.run_batch_cli
