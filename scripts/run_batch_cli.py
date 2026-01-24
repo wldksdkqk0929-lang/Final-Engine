@@ -1,39 +1,57 @@
 import sys
-from engine.batch_runner import SniperBatchRunner
-from engine.engines.engine_intel import SniperV12Intel
+import os
 
+# -------------------------------------------------------------------
+# Project Root Path Setup (Critical for imports)
+# -------------------------------------------------------------------
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(current_dir)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
+# -------------------------------------------------------------------
+# Imports (Real Engine Binding)
+# -------------------------------------------------------------------
+try:
+    from src.shared.logger import logger
+    from engine.orchestrator import SniperOrchestrator
+except ImportError as e:
+    print(f"::error::Critical Import Error: {e}")
+    sys.exit(1)
+
+# -------------------------------------------------------------------
+# Main Entry
+# -------------------------------------------------------------------
 def main():
-    print("🔥 [CLI] Starting Sniper Batch Process...")
+    """
+    [Phase-4B] Sniper Batch CLI
+    - Wraps real SniperOrchestrator with structured logging
+    """
 
-    # [Target Definition]
-    target_symbols = ["AAPL", "TSLA", "NVDA", "MSFT", "PLTR"]
+    # SECTION 1: System Initialization
+    with logger.group("1. System Initialization"):
+        try:
+            logger.info("Bootstrapping Sniper Orchestrator...")
+            orchestrator = SniperOrchestrator()
+            logger.success("Orchestrator Initialized.")
+        except Exception as e:
+            logger.error("Initialization Failed", e)
+            sys.exit(1)
 
-    # [Dependency Injection]
-    thresholds_config = {
-        "PASS": 80,
-        "READY": 60,
-        "FAIL": 0
-    }
+    # SECTION 2: Batch Execution
+    with logger.group("2. Batch Execution"):
+        try:
+            logger.info("Starting Orchestrator Pipeline...")
+            orchestrator.run()
+            logger.success("Pipeline Execution Completed.")
+        except Exception as e:
+            logger.error("Runtime Execution Failed", e)
+            sys.exit(1)
 
-    processor = SniperV12Intel(thresholds_config=thresholds_config)
-    runner = SniperBatchRunner(processor=processor)
+    # SECTION 3: Shutdown
+    with logger.group("3. Shutdown"):
+        logger.info("System Shutdown Normal.")
 
-    try:
-        # 🔴 IMPORTANT: runner returns TUPLE
-        stats, _ = runner.run(target_symbols)
-
-        error_count = stats.get("error_count", 0)
-
-        if error_count > 0:
-            print(f"⚠️ [CLI] Batch completed with {error_count} errors.")
-        else:
-            print("✅ [CLI] Batch completed successfully.")
-
-    except Exception as e:
-        print(f"❌ [CLI] Critical Batch Failure: {e}")
-        sys.exit(1)
-
-
+# -------------------------------------------------------------------
 if __name__ == "__main__":
     main()
