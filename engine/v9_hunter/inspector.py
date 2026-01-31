@@ -1,63 +1,84 @@
 import os
 import json
-import google.generativeai as genai
+import requests
 from datetime import datetime
 
 class NewsInspector:
     def __init__(self):
-        api_key = os.environ.get("GEMINI_API_KEY")
-        if api_key:
-            genai.configure(api_key=api_key)
-            # [수정] 가장 호환성 좋은 'gemini-pro' 모델 사용
-            self.model = genai.GenerativeModel("gemini-pro")
-        else:
-            self.model = None
+        self.api_key = os.environ.get("GEMINI_API_KEY")
+        # 구글 서버 직통 주소 (라이브러리 없이 직접 타격)
+        self.base_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
 
     def analyze(self, symbol, news_list):
+        # 1. 뉴스가 없으면 복귀
         if not news_list:
-            return {"symbol": symbol, "action": "DISCARD", "thesis": {"summary": "No news data."}}
+            return {"symbol": symbol, "action": "DISCARD", "thesis": {"summary": "No news detected."}}
 
-        # 뉴스 요약 (상위 3개만 - 속도 최적화)
+        # 2. 키가 없으면 에러 처리
+        if not self.api_key:
+            return {"symbol": symbol, "action": "WATCH", "risk_level": "ERROR", "thesis": {"summary": "System Alert: API Key Missing"}}
+
+        # 3. 뉴스 요약 (상위 3개)
         news_text = "\n".join([f"- {n['title']}" for n in news_list[:3]])
 
-        if not self.model:
-            return {"symbol": symbol, "action": "WATCH", "risk_level": "ERROR", "thesis": {"summary": "API Key Missing"}}
+        # 4. 프롬프트 작성
+        payload = {
+            "contents": [{
+                "parts": [{
+                    "text": f"""
+                    Role: Wall Street Analyst.
+                    Task: Analyze news for {symbol} and decide action.
+                    
+                    NEWS:
+                    {news_text}
+                    
+                    Output JSON ONLY:
+                    {{
+                        "action": "WATCH" or "DISCARD",
+                        "score": 0-100,
+                        "risk": "LOW" or "MEDIUM" or "HIGH",
+                        "summary": "One concise sentence reason in Korean(if possible) or English."
+                    }}
+                    """
+                }]
+            }]
+        }
 
-        # 프롬프트 (간결하게)
-        prompt = f"""
-        Analyze stock {symbol} based on news:
-        {news_text}
-        
-        Output JSON only:
-        {{
-            "action": "WATCH" or "DISCARD",
-            "score": 0-100,
-            "risk": "LOW" or "MEDIUM" or "HIGH",
-            "summary": "One short sentence reason."
-        }}
-        """
-        
         try:
-            response = self.model.generate_content(prompt)
-            # 텍스트 클리닝 (Markdown 제거)
-            raw = response.text.replace("```json", "").replace("```", "").strip()
-            data = json.loads(raw)
+            # 5. 구글 서버로 직접 전송 (POST)
+            response = requests.post(
+                f"{self.base_url}?key={self.api_key}",
+                headers={"Content-Type": "application/json"},
+                json=payload
+            )
+            
+            # 6. 응답 해석
+            if response.status_code != 200:
+                print(f"   ⚠️ API Error {response.status_code}: {response.text[:50]}...")
+                raise Exception("API Request Failed")
+
+            result = response.json()
+            raw_text = result['candidates'][0]['content']['parts'][0]['text']
+            
+            # JSON 청소 (마크다운 제거)
+            clean_text = raw_text.replace("```json", "").replace("```", "").strip()
+            data = json.loads(clean_text)
             
             return {
                 "symbol": symbol,
                 "action": data.get("action", "WATCH"),
                 "reasoning_score": data.get("score", 50),
                 "risk_level": data.get("risk", "MEDIUM"),
-                "thesis": {"summary": data.get("summary", "AI Analysis Complete")},
+                "thesis": {"summary": data.get("summary", "Analysis Complete")},
                 "last_updated": datetime.now().strftime("%H:%M")
             }
+
         except Exception as e:
-            # 실패해도 뉴스 제목은 보여준다
-            print(f"   ⚠️ AI Error on {symbol}: {e}")
+            # 실패 시에도 뉴스 제목은 보여줌
             return {
                 "symbol": symbol,
                 "action": "WATCH",
-                "reasoning_score": 0,
+                "reasoning_score": 10,
                 "risk_level": "ERROR",
-                "thesis": {"summary": f"News: {news_list[0]['title']}"}
+                "thesis": {"summary": f"News Found: {news_list[0]['title']}"}
             }
