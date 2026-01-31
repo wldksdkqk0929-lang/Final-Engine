@@ -1,39 +1,5 @@
 {
   "date": "2026-01-31",
   "version": "V9.0",
-  "dossier": [
-    {
-      "symbol": "TSLA",
-      "tech_score": 92.5,
-      "reasoning_score": 0,
-      "risk_level": "ERROR",
-      "action": "WATCH",
-      "thesis": {
-        "summary": "Analysis failed: 429 Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details.",
-        "news_count": 4
-      }
-    },
-    {
-      "symbol": "NVDA",
-      "tech_score": 88.0,
-      "reasoning_score": 50,
-      "risk_level": "MEDIUM",
-      "action": "WATCH",
-      "thesis": {
-        "summary": "Mixed signals; a stalled $100B investment offsets a potentially overzealous price target prediction, requiring cautious observation.",
-        "news_count": 4
-      }
-    },
-    {
-      "symbol": "PLTR",
-      "tech_score": 45.0,
-      "reasoning_score": 50,
-      "risk_level": "MEDIUM",
-      "action": "WATCH",
-      "thesis": {
-        "summary": "The news is mixed and earnings are imminent, suggesting uncertainty and a need to wait for more concrete information before making a decision.",
-        "news_count": 3
-      }
-    }
-  ]
+  "dossier": []
 }
