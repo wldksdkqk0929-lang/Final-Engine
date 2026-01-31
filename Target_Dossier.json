@@ -1,5 +1,146 @@
 {
   "date": "2026-01-31",
   "version": "V9.0",
-  "dossier": []
+  "dossier": [
+    {
+      "reasoning_score": 5,
+      "risk_level": "LOW",
+      "action": "DISCARD",
+      "thesis_summary": "With zero relevant news data available, there's no basis for a turnaround entry, making it a hard pass.",
+      "symbol": "AAPL"
+    },
+    {
+      "reasoning_score": 10,
+      "risk_level": "LOW",
+      "action": "DISCARD",
+      "thesis_summary": "With no actual news data provided, there is no basis to consider any kind of turnaround and the action defaults to discard.",
+      "symbol": "MSFT"
+    },
+    {
+      "reasoning_score": 10,
+      "risk_level": "LOW",
+      "action": "DISCARD",
+      "thesis_summary": "No relevant news data provided to assess a potential turnaround for GOOGL.",
+      "symbol": "GOOGL"
+    },
+    {
+      "reasoning_score": 10,
+      "risk_level": "LOW",
+      "action": "DISCARD",
+      "thesis_summary": "With absolutely no actual news provided, it's impossible to assess a turnaround, making this a clear discard.",
+      "symbol": "AMZN"
+    },
+    {
+      "reasoning_score": 10,
+      "risk_level": "LOW",
+      "action": "DISCARD",
+      "thesis_summary": "Zero useful news data means there is no basis to analyze NVDA as a turnaround target.",
+      "symbol": "NVDA"
+    },
+    {
+      "reasoning_score": 10,
+      "risk_level": "LOW",
+      "action": "DISCARD",
+      "thesis_summary": "With absolutely no information provided besides placeholder dates and 'No Title', there's no basis to consider TSLA for a turnaround; this is just static.",
+      "symbol": "TSLA"
+    },
+    {
+      "reasoning_score": 10,
+      "risk_level": "LOW",
+      "action": "DISCARD",
+      "thesis_summary": "Without any actual news, there's no basis to consider a turnaround; it's just noise.",
+      "symbol": "META"
+    },
+    {
+      "reasoning_score": 10,
+      "risk_level": "LOW",
+      "action": "DISCARD",
+      "thesis_summary": "With zero relevant news data, there's absolutely no basis to consider BRK-B a turnaround opportunity; it's just dead air.",
+      "symbol": "BRK-B"
+    },
+    {
+      "reasoning_score": 5,
+      "risk_level": "LOW",
+      "action": "DISCARD",
+      "thesis_summary": "With zero actual news content, there's absolutely no basis to assess a turnaround; it's like trying to hunt a ghost in a graveyard with a water pistol.",
+      "symbol": "V"
+    },
+    {
+      "reasoning_score": 10,
+      "risk_level": "LOW",
+      "action": "DISCARD",
+      "thesis_summary": "With no actual news provided, there is no basis to consider UNH as a turnaround opportunity; the 'news' is literally just placeholder dates, rendering any analysis impossible and necessitating a discard.",
+      "symbol": "UNH"
+    },
+    {
+      "reasoning_score": 10,
+      "risk_level": "LOW",
+      "action": "DISCARD",
+      "thesis_summary": "With no actual news provided, there is no basis for considering a turnaround, and the default is to ignore the possibility of action.",
+      "symbol": "XOM"
+    },
+    {
+      "reasoning_score": 10,
+      "risk_level": "LOW",
+      "action": "DISCARD",
+      "thesis_summary": "With absolutely no news to analyze beyond placeholder entries, there's no basis to consider JNJ a turnaround target, rendering it unanalyzable.",
+      "symbol": "JNJ"
+    },
+    {
+      "reasoning_score": 10,
+      "risk_level": "LOW",
+      "action": "DISCARD",
+      "thesis_summary": "Zero actual news provided to assess any turnaround potential; just placeholder dates.",
+      "symbol": "JPM"
+    },
+    {
+      "reasoning_score": 10,
+      "risk_level": "LOW",
+      "action": "DISCARD",
+      "thesis_summary": "With no actual news data provided, there's nothing to analyze; assuming baseline risk, it's a clear discard.",
+      "symbol": "WMT"
+    },
+    {
+      "reasoning_score": 5,
+      "risk_level": "LOW",
+      "action": "DISCARD",
+      "thesis_summary": "No discernible information presented to suggest a turnaround opportunity, indicating a need to discard the stock.",
+      "symbol": "PG"
+    },
+    {
+      "symbol": "MA",
+      "reasoning_score": 0,
+      "risk_level": "ERROR",
+      "action": "WATCH",
+      "thesis_summary": "Analysis failed: 429 Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details."
+    },
+    {
+      "symbol": "LLY",
+      "reasoning_score": 0,
+      "risk_level": "ERROR",
+      "action": "WATCH",
+      "thesis_summary": "Analysis failed: 429 Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details."
+    },
+    {
+      "reasoning_score": 10,
+      "risk_level": "LOW",
+      "action": "DISCARD",
+      "thesis_summary": "No relevant news data exists to justify any turnaround thesis.",
+      "symbol": "CVX"
+    },
+    {
+      "symbol": "HD",
+      "reasoning_score": 0,
+      "risk_level": "ERROR",
+      "action": "WATCH",
+      "thesis_summary": "Analysis failed: 429 Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details."
+    },
+    {
+      "reasoning_score": 10,
+      "risk_level": "LOW",
+      "action": "DISCARD",
+      "thesis_summary": "With zero actual news provided, there is no basis to consider MRK a turnaround entry target; this data is essentially useless.",
+      "symbol": "MRK"
+    }
+  ]
 }
