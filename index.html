@@ -1,0 +1,86 @@
+
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta http-equiv="refresh" content="60"> <title>SNIPER V9 // COMMAND CENTER</title>
+        
+    <style>
+        :root { --bg: #0a0a0a; --card: #1c1c1c; --text: #e0e0e0; --accent: #00ff41; --danger: #ff2a2a; --warn: #ffcc00; }
+        body { background-color: var(--bg); color: var(--text); font-family: 'Courier New', Courier, monospace; margin: 0; padding: 20px; }
+        .container { max_width: 800px; margin: 0 auto; border: 1px solid #333; padding: 20px; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        h1 { text-align: center; color: var(--accent); text-transform: uppercase; border-bottom: 2px solid var(--accent); padding-bottom: 10px; letter-spacing: 2px; }
+        .meta { text-align: center; color: #666; font-size: 0.8em; margin-bottom: 30px; }
+        
+        .card { background: var(--card); border-left: 5px solid #555; margin-bottom: 20px; padding: 15px; position: relative; }
+        .card.ENGAGE { border-left-color: var(--accent); background: linear-gradient(90deg, #001a05 0%, #1c1c1c 100%); }
+        .card.WATCH { border-left-color: var(--warn); }
+        .card.DISCARD { border-left-color: var(--danger); opacity: 0.7; }
+        
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 10px; }
+        .symbol { font-size: 1.8em; font-weight: bold; color: #fff; }
+        .badge { padding: 5px 10px; border-radius: 2px; font-weight: bold; color: #000; font-size: 0.9em; }
+        .badge.ENGAGE { background-color: var(--accent); box-shadow: 0 0 10px var(--accent); }
+        .badge.WATCH { background-color: var(--warn); }
+        .badge.DISCARD { background-color: var(--danger); }
+        
+        .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 15px; text-align: center; }
+        .stat-box { background: #2a2a2a; padding: 5px; border-radius: 4px; }
+        .stat-label { font-size: 0.7em; color: #888; display: block; }
+        .stat-val { font-size: 1.1em; font-weight: bold; color: #fff; }
+        
+        .thesis { background: #000; padding: 15px; border: 1px dashed #444; color: #bbb; font-style: italic; line-height: 1.4; }
+        .execution { margin-top: 15px; padding: 10px; background: rgba(0, 255, 65, 0.1); border: 1px solid var(--accent); color: var(--accent); font-weight: bold; text-align: center; text-transform: uppercase; animation: pulse 2s infinite; }
+        
+        @keyframes pulse { 0% { opacity: 0.8; } 50% { opacity: 1; } 100% { opacity: 0.8; } }
+        .footer { text-align: center; margin-top: 40px; border-top: 1px solid #333; padding-top: 10px; font-size: 0.8em; color: #444; }
+    </style>
+    
+    </head>
+    <body>
+        <div class="container">
+            <h1>Hybrid Sniper V9</h1>
+            <div class="meta">SYSTEM STATUS: ONLINE /// LAST UPDATE: 2026-01-31 16:44:32</div>
+    
+        <div class="card DISCARD">
+            <div class="header">
+                <span class="symbol">TSLA</span>
+                <span class="badge DISCARD">DISCARD</span>
+            </div>
+            <div class="grid">
+                <div class="stat-box"><span class="stat-label">CHART</span><span class="stat-val">92.5</span></div>
+                <div class="stat-box"><span class="stat-label">AI REASON</span><span class="stat-val">30</span></div>
+                <div class="stat-box"><span class="stat-label">RISK</span><span class="stat-val">MEDIUM</span></div>
+            </div>
+            <div class="thesis">"News is primarily speculative mergers, earnings expectations and negative views on valuation; no clear turnaround signals are visible and potential reputational risk is present."</div>
+        </div>
+        <div class="card WATCH">
+            <div class="header">
+                <span class="symbol">NVDA</span>
+                <span class="badge WATCH">WATCH</span>
+            </div>
+            <div class="grid">
+                <div class="stat-box"><span class="stat-label">CHART</span><span class="stat-val">88.0</span></div>
+                <div class="stat-box"><span class="stat-label">AI REASON</span><span class="stat-val">55</span></div>
+                <div class="stat-box"><span class="stat-label">RISK</span><span class="stat-val">MEDIUM</span></div>
+            </div>
+            <div class="thesis">"While one Motley Fool article predicts a price surge driven by robotaxis, and another suggests considering alternatives, the stalled OpenAI investment and Intel's stock reaction introduce too much uncertainty to confidently enter a turnaround position."</div>
+        </div>
+        <div class="card DISCARD">
+            <div class="header">
+                <span class="symbol">PLTR</span>
+                <span class="badge DISCARD">DISCARD</span>
+            </div>
+            <div class="grid">
+                <div class="stat-box"><span class="stat-label">CHART</span><span class="stat-val">45.0</span></div>
+                <div class="stat-box"><span class="stat-label">AI REASON</span><span class="stat-val">30</span></div>
+                <div class="stat-box"><span class="stat-label">RISK</span><span class="stat-val">LOW</span></div>
+            </div>
+            <div class="thesis">"The available news articles are speculative, focusing on earnings expectations rather than concrete turnaround indicators, and thus do not provide sufficient evidence to consider a turnaround entry."</div>
+        <div class="execution">⚡ SOLDIER ENGAGED: $1,000 DEPLOYED ⚡</div></div>
+            <div class="footer">SECURE CONNECTION // COMMANDER EYES ONLY</div>
+        </div>
+    </body>
+    </html>
+    

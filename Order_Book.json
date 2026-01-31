@@ -1,0 +1,9 @@
+[
+  {
+    "timestamp": "2026-01-31T16:29:13.973613",
+    "symbol": "PLTR",
+    "type": "MARKET_BUY",
+    "amount_usd": 1000.0,
+    "reasoning_ref": "[Mock Analysis] Based on 2 articles, sentiment seems mixed but potential exists."
+  }
+]
