@@ -1,0 +1,33 @@
+name: Sniper V9 Daily Mission
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 22 * * *' # 한국 시간 오전 7시
+permissions:
+  contents: write
+jobs:
+  mission_start:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Check out codes
+        uses: actions/checkout@v3
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      - name: 📦 Install Libraries
+        run: pip install google-generative-ai pandas requests pytz
+      - name: ⚔️ Run Sniper Mission
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python scripts/run_v9_mission.py
+          python engine/dashboard.py
+      - name: 📡 Deploy to Dashboard
+        run: |
+          git config --global user.name "Sniper Bot"
+          git config --global user.email "bot@sniper.v9"
+          git checkout -B gh-pages
+          git add index.html Target_Dossier.json Order_Book.json
+          git commit -m "Auto-Update: $(date)" || echo "No changes"
+          git push origin gh-pages --force
