@@ -6,28 +6,25 @@ from datetime import datetime
 class NewsInspector:
     def __init__(self):
         self.api_key = os.environ.get("GEMINI_API_KEY")
-        # 구글 서버 직통 주소 (라이브러리 없이 직접 타격)
-        self.base_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+        # [변경] 가장 범용적인 'gemini-pro' 모델 사용
+        self.base_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
 
     def analyze(self, symbol, news_list):
-        # 1. 뉴스가 없으면 복귀
         if not news_list:
             return {"symbol": symbol, "action": "DISCARD", "thesis": {"summary": "No news detected."}}
 
-        # 2. 키가 없으면 에러 처리
         if not self.api_key:
-            return {"symbol": symbol, "action": "WATCH", "risk_level": "ERROR", "thesis": {"summary": "System Alert: API Key Missing"}}
+            return {"symbol": symbol, "action": "WATCH", "risk_level": "ERROR", "thesis": {"summary": "API Key Missing"}}
 
-        # 3. 뉴스 요약 (상위 3개)
         news_text = "\n".join([f"- {n['title']}" for n in news_list[:3]])
 
-        # 4. 프롬프트 작성
+        # Gemini Pro용 데이터 포맷
         payload = {
             "contents": [{
                 "parts": [{
                     "text": f"""
-                    Role: Wall Street Analyst.
-                    Task: Analyze news for {symbol} and decide action.
+                    Role: Financial Analyst.
+                    Task: Analyze news for {symbol}.
                     
                     NEWS:
                     {news_text}
@@ -36,8 +33,8 @@ class NewsInspector:
                     {{
                         "action": "WATCH" or "DISCARD",
                         "score": 0-100,
-                        "risk": "LOW" or "MEDIUM" or "HIGH",
-                        "summary": "One concise sentence reason in Korean(if possible) or English."
+                        "risk": "LOW" or "MEDIUM",
+                        "summary": "One short sentence in Korean."
                     }}
                     """
                 }]
@@ -45,40 +42,45 @@ class NewsInspector:
         }
 
         try:
-            # 5. 구글 서버로 직접 전송 (POST)
             response = requests.post(
                 f"{self.base_url}?key={self.api_key}",
                 headers={"Content-Type": "application/json"},
                 json=payload
             )
             
-            # 6. 응답 해석
             if response.status_code != 200:
-                print(f"   ⚠️ API Error {response.status_code}: {response.text[:50]}...")
+                # 에러 발생 시 상세 내용 출력
+                print(f"   ⚠️ API Error {response.status_code}: {response.text[:100]}...")
                 raise Exception("API Request Failed")
 
             result = response.json()
-            raw_text = result['candidates'][0]['content']['parts'][0]['text']
-            
-            # JSON 청소 (마크다운 제거)
+            # 안전한 파싱
+            try:
+                raw_text = result['candidates'][0]['content']['parts'][0]['text']
+            except:
+                raw_text = "{}"
+
             clean_text = raw_text.replace("```json", "").replace("```", "").strip()
-            data = json.loads(clean_text)
+            # JSON 파싱 시도 (실패시 빈 딕셔너리)
+            try:
+                data = json.loads(clean_text)
+            except:
+                data = {}
             
             return {
                 "symbol": symbol,
                 "action": data.get("action", "WATCH"),
                 "reasoning_score": data.get("score", 50),
                 "risk_level": data.get("risk", "MEDIUM"),
-                "thesis": {"summary": data.get("summary", "Analysis Complete")},
+                "thesis": {"summary": data.get("summary", f"News found: {news_list[0]['title']}")},
                 "last_updated": datetime.now().strftime("%H:%M")
             }
 
         except Exception as e:
-            # 실패 시에도 뉴스 제목은 보여줌
             return {
                 "symbol": symbol,
                 "action": "WATCH",
                 "reasoning_score": 10,
                 "risk_level": "ERROR",
-                "thesis": {"summary": f"News Found: {news_list[0]['title']}"}
+                "thesis": {"summary": f"News: {news_list[0]['title']}"}
             }
