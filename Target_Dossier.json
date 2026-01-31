@@ -10,7 +10,7 @@
       "thesis": {
         "summary": "분석할 뉴스 내용이 없습니다."
       },
-      "last_updated": "17:36"
+      "last_updated": "17:37"
     },
     {
       "symbol": "MSFT",
@@ -20,7 +20,7 @@
       "thesis": {
         "summary": "분석할 뉴스 내용이 없습니다."
       },
-      "last_updated": "17:36"
+      "last_updated": "17:38"
     },
     {
       "symbol": "GOOGL",
@@ -28,9 +28,9 @@
       "reasoning_score": 0,
       "risk_level": "LOW",
       "thesis": {
-        "summary": "분석할 뉴스 내용이 없습니다."
+        "summary": "분석할 뉴스 제목이나 내용이 없습니다."
       },
-      "last_updated": "17:36"
+      "last_updated": "17:38"
     },
     {
       "symbol": "AMZN",
@@ -40,7 +40,7 @@
       "thesis": {
         "summary": "분석할 뉴스 내용이 없습니다."
       },
-      "last_updated": "17:36"
+      "last_updated": "17:38"
     },
     {
       "symbol": "NVDA",
@@ -50,7 +50,7 @@
       "thesis": {
         "summary": "분석할 뉴스 내용이 없습니다."
       },
-      "last_updated": "17:36"
+      "last_updated": "17:38"
     },
     {
       "symbol": "TSLA",
@@ -58,9 +58,9 @@
       "reasoning_score": 0,
       "risk_level": "LOW",
       "thesis": {
-        "summary": "분석할 뉴스 내용이 없습니다."
+        "summary": "분석할 뉴스 내용이 제공되지 않았습니다."
       },
-      "last_updated": "17:36"
+      "last_updated": "17:38"
     },
     {
       "symbol": "META",
@@ -68,9 +68,9 @@
       "reasoning_score": 0,
       "risk_level": "LOW",
       "thesis": {
-        "summary": "분석할 뉴스의 내용이 없습니다."
+        "summary": "분석할 뉴스 내용이 제공되지 않았습니다."
       },
-      "last_updated": "17:36"
+      "last_updated": "17:38"
     },
     {
       "symbol": "BRK-B",
@@ -78,9 +78,9 @@
       "reasoning_score": 0,
       "risk_level": "LOW",
       "thesis": {
-        "summary": "분석할 뉴스 내용이 제공되지 않았습니다."
+        "summary": "분석할 만한 유의미한 뉴스 내용이 없습니다."
       },
-      "last_updated": "17:37"
+      "last_updated": "17:38"
     },
     {
       "symbol": "V",
@@ -90,7 +90,7 @@
       "thesis": {
         "summary": "분석할 뉴스 내용이 없습니다."
       },
-      "last_updated": "17:37"
+      "last_updated": "17:38"
     },
     {
       "symbol": "UNH",
@@ -100,7 +100,7 @@
       "thesis": {
         "summary": "분석할 뉴스 내용이 없습니다."
       },
-      "last_updated": "17:37"
+      "last_updated": "17:39"
     },
     {
       "symbol": "XOM",
@@ -110,7 +110,7 @@
       "thesis": {
         "summary": "분석할 뉴스 내용이 없습니다."
       },
-      "last_updated": "17:37"
+      "last_updated": "17:39"
     },
     {
       "symbol": "JNJ",
@@ -120,7 +120,7 @@
       "thesis": {
         "summary": "분석할 뉴스 내용이 없습니다."
       },
-      "last_updated": "17:37"
+      "last_updated": "17:39"
     },
     {
       "symbol": "JPM",
@@ -130,7 +130,7 @@
       "thesis": {
         "summary": "분석할 뉴스 내용이 없습니다."
       },
-      "last_updated": "17:37"
+      "last_updated": "17:39"
     },
     {
       "symbol": "WMT",
@@ -140,7 +140,7 @@
       "thesis": {
         "summary": "분석할 뉴스 내용이 없습니다."
       },
-      "last_updated": "17:37"
+      "last_updated": "17:39"
     },
     {
       "symbol": "PG",
@@ -150,7 +150,7 @@
       "thesis": {
         "summary": "분석할 뉴스 내용이 없습니다."
       },
-      "last_updated": "17:37"
+      "last_updated": "17:39"
     },
     {
       "symbol": "MA",
@@ -158,9 +158,9 @@
       "reasoning_score": 0,
       "risk_level": "LOW",
       "thesis": {
-        "summary": "분석할 뉴스 내용이 없습니다."
+        "summary": "분석할 유의미한 뉴스 내용이 없습니다."
       },
-      "last_updated": "17:38"
+      "last_updated": "17:39"
     },
     {
       "symbol": "LLY",
@@ -170,7 +170,7 @@
       "thesis": {
         "summary": "분석할 뉴스 내용이 없습니다."
       },
-      "last_updated": "17:38"
+      "last_updated": "17:39"
     },
     {
       "symbol": "CVX",
@@ -178,9 +178,9 @@
       "reasoning_score": 0,
       "risk_level": "LOW",
       "thesis": {
-        "summary": "분석할 뉴스 내용이 없습니다."
+        "summary": "분석할 유의미한 뉴스 내용이 없습니다."
       },
-      "last_updated": "17:38"
+      "last_updated": "17:40"
     },
     {
       "symbol": "HD",
@@ -190,7 +190,7 @@
       "thesis": {
         "summary": "분석할 뉴스 내용이 없습니다."
       },
-      "last_updated": "17:38"
+      "last_updated": "17:40"
     },
     {
       "symbol": "MRK",
@@ -200,7 +200,7 @@
       "thesis": {
         "summary": "분석할 뉴스 내용이 없습니다."
       },
-      "last_updated": "17:38"
+      "last_updated": "17:40"
     }
   ]
 }
