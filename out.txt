@@ -10,64 +10,64 @@ https://github.com/google-gemini/deprecated-generative-ai-python/blob/main/READM
 🚀 [Hunter] Mission Start: Loading Targets...
 🎯 Targets Identified: 20 sectors
 📡 Scanning: AAPL...
-   ⚠️ Parsing Error on AAPL: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   ⚠️ AI Error on AAPL: 404 models/gemini-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
    👉 Result: WATCH
 📡 Scanning: MSFT...
-   ⚠️ Parsing Error on MSFT: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   ⚠️ AI Error on MSFT: 404 models/gemini-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
    👉 Result: WATCH
 📡 Scanning: GOOGL...
-   ⚠️ Parsing Error on GOOGL: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   ⚠️ AI Error on GOOGL: 404 models/gemini-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
    👉 Result: WATCH
 📡 Scanning: AMZN...
-   ⚠️ Parsing Error on AMZN: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   ⚠️ AI Error on AMZN: 404 models/gemini-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
    👉 Result: WATCH
 📡 Scanning: NVDA...
-   ⚠️ Parsing Error on NVDA: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   ⚠️ AI Error on NVDA: 404 models/gemini-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
    👉 Result: WATCH
 📡 Scanning: TSLA...
-   ⚠️ Parsing Error on TSLA: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   ⚠️ AI Error on TSLA: 404 models/gemini-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
    👉 Result: WATCH
 📡 Scanning: META...
-   ⚠️ Parsing Error on META: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   ⚠️ AI Error on META: 404 models/gemini-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
    👉 Result: WATCH
 📡 Scanning: BRK-B...
-   ⚠️ Parsing Error on BRK-B: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   ⚠️ AI Error on BRK-B: 404 models/gemini-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
    👉 Result: WATCH
 📡 Scanning: V...
-   ⚠️ Parsing Error on V: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   ⚠️ AI Error on V: 404 models/gemini-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
    👉 Result: WATCH
 📡 Scanning: UNH...
-   ⚠️ Parsing Error on UNH: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   ⚠️ AI Error on UNH: 404 models/gemini-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
    👉 Result: WATCH
 📡 Scanning: XOM...
-   ⚠️ Parsing Error on XOM: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   ⚠️ AI Error on XOM: 404 models/gemini-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
    👉 Result: WATCH
 📡 Scanning: JNJ...
-   ⚠️ Parsing Error on JNJ: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   ⚠️ AI Error on JNJ: 404 models/gemini-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
    👉 Result: WATCH
 📡 Scanning: JPM...
-   ⚠️ Parsing Error on JPM: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   ⚠️ AI Error on JPM: 404 models/gemini-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
    👉 Result: WATCH
 📡 Scanning: WMT...
-   ⚠️ Parsing Error on WMT: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   ⚠️ AI Error on WMT: 404 models/gemini-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
    👉 Result: WATCH
 📡 Scanning: PG...
-   ⚠️ Parsing Error on PG: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   ⚠️ AI Error on PG: 404 models/gemini-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
    👉 Result: WATCH
 📡 Scanning: MA...
-   ⚠️ Parsing Error on MA: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   ⚠️ AI Error on MA: 404 models/gemini-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
    👉 Result: WATCH
 📡 Scanning: LLY...
-   ⚠️ Parsing Error on LLY: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   ⚠️ AI Error on LLY: 404 models/gemini-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
    👉 Result: WATCH
 📡 Scanning: CVX...
-   ⚠️ Parsing Error on CVX: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   ⚠️ AI Error on CVX: 404 models/gemini-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
    👉 Result: WATCH
 📡 Scanning: HD...
-   ⚠️ Parsing Error on HD: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   ⚠️ AI Error on HD: 404 models/gemini-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
    👉 Result: WATCH
 📡 Scanning: MRK...
-   ⚠️ Parsing Error on MRK: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   ⚠️ AI Error on MRK: 404 models/gemini-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
    👉 Result: WATCH
 ✅ [Hunter] Mission Complete. 20 reports filed.
 🎨 [Dashboard] V11.5 Style Upgrade Applied: index.html

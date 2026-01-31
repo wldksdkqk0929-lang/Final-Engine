@@ -5,181 +5,181 @@
     {
       "symbol": "AAPL",
       "action": "WATCH",
-      "reasoning_score": 10,
+      "reasoning_score": 0,
       "risk_level": "ERROR",
       "thesis": {
-        "summary": "AI Error, but News Detected: No Title"
+        "summary": "News: No Title"
       }
     },
     {
       "symbol": "MSFT",
       "action": "WATCH",
-      "reasoning_score": 10,
+      "reasoning_score": 0,
       "risk_level": "ERROR",
       "thesis": {
-        "summary": "AI Error, but News Detected: No Title"
+        "summary": "News: No Title"
       }
     },
     {
       "symbol": "GOOGL",
       "action": "WATCH",
-      "reasoning_score": 10,
+      "reasoning_score": 0,
       "risk_level": "ERROR",
       "thesis": {
-        "summary": "AI Error, but News Detected: No Title"
+        "summary": "News: No Title"
       }
     },
     {
       "symbol": "AMZN",
       "action": "WATCH",
-      "reasoning_score": 10,
+      "reasoning_score": 0,
       "risk_level": "ERROR",
       "thesis": {
-        "summary": "AI Error, but News Detected: No Title"
+        "summary": "News: No Title"
       }
     },
     {
       "symbol": "NVDA",
       "action": "WATCH",
-      "reasoning_score": 10,
+      "reasoning_score": 0,
       "risk_level": "ERROR",
       "thesis": {
-        "summary": "AI Error, but News Detected: No Title"
+        "summary": "News: No Title"
       }
     },
     {
       "symbol": "TSLA",
       "action": "WATCH",
-      "reasoning_score": 10,
+      "reasoning_score": 0,
       "risk_level": "ERROR",
       "thesis": {
-        "summary": "AI Error, but News Detected: No Title"
+        "summary": "News: No Title"
       }
     },
     {
       "symbol": "META",
       "action": "WATCH",
-      "reasoning_score": 10,
+      "reasoning_score": 0,
       "risk_level": "ERROR",
       "thesis": {
-        "summary": "AI Error, but News Detected: No Title"
+        "summary": "News: No Title"
       }
     },
     {
       "symbol": "BRK-B",
       "action": "WATCH",
-      "reasoning_score": 10,
+      "reasoning_score": 0,
       "risk_level": "ERROR",
       "thesis": {
-        "summary": "AI Error, but News Detected: No Title"
+        "summary": "News: No Title"
       }
     },
     {
       "symbol": "V",
       "action": "WATCH",
-      "reasoning_score": 10,
+      "reasoning_score": 0,
       "risk_level": "ERROR",
       "thesis": {
-        "summary": "AI Error, but News Detected: No Title"
+        "summary": "News: No Title"
       }
     },
     {
       "symbol": "UNH",
       "action": "WATCH",
-      "reasoning_score": 10,
+      "reasoning_score": 0,
       "risk_level": "ERROR",
       "thesis": {
-        "summary": "AI Error, but News Detected: No Title"
+        "summary": "News: No Title"
       }
     },
     {
       "symbol": "XOM",
       "action": "WATCH",
-      "reasoning_score": 10,
+      "reasoning_score": 0,
       "risk_level": "ERROR",
       "thesis": {
-        "summary": "AI Error, but News Detected: No Title"
+        "summary": "News: No Title"
       }
     },
     {
       "symbol": "JNJ",
       "action": "WATCH",
-      "reasoning_score": 10,
+      "reasoning_score": 0,
       "risk_level": "ERROR",
       "thesis": {
-        "summary": "AI Error, but News Detected: No Title"
+        "summary": "News: No Title"
       }
     },
     {
       "symbol": "JPM",
       "action": "WATCH",
-      "reasoning_score": 10,
+      "reasoning_score": 0,
       "risk_level": "ERROR",
       "thesis": {
-        "summary": "AI Error, but News Detected: No Title"
+        "summary": "News: No Title"
       }
     },
     {
       "symbol": "WMT",
       "action": "WATCH",
-      "reasoning_score": 10,
+      "reasoning_score": 0,
       "risk_level": "ERROR",
       "thesis": {
-        "summary": "AI Error, but News Detected: No Title"
+        "summary": "News: No Title"
       }
     },
     {
       "symbol": "PG",
       "action": "WATCH",
-      "reasoning_score": 10,
+      "reasoning_score": 0,
       "risk_level": "ERROR",
       "thesis": {
-        "summary": "AI Error, but News Detected: No Title"
+        "summary": "News: No Title"
       }
     },
     {
       "symbol": "MA",
       "action": "WATCH",
-      "reasoning_score": 10,
+      "reasoning_score": 0,
       "risk_level": "ERROR",
       "thesis": {
-        "summary": "AI Error, but News Detected: No Title"
+        "summary": "News: No Title"
       }
     },
     {
       "symbol": "LLY",
       "action": "WATCH",
-      "reasoning_score": 10,
+      "reasoning_score": 0,
       "risk_level": "ERROR",
       "thesis": {
-        "summary": "AI Error, but News Detected: No Title"
+        "summary": "News: No Title"
       }
     },
     {
       "symbol": "CVX",
       "action": "WATCH",
-      "reasoning_score": 10,
+      "reasoning_score": 0,
       "risk_level": "ERROR",
       "thesis": {
-        "summary": "AI Error, but News Detected: No Title"
+        "summary": "News: No Title"
       }
     },
     {
       "symbol": "HD",
       "action": "WATCH",
-      "reasoning_score": 10,
+      "reasoning_score": 0,
       "risk_level": "ERROR",
       "thesis": {
-        "summary": "AI Error, but News Detected: No Title"
+        "summary": "News: No Title"
       }
     },
     {
       "symbol": "MRK",
       "action": "WATCH",
-      "reasoning_score": 10,
+      "reasoning_score": 0,
       "risk_level": "ERROR",
       "thesis": {
-        "summary": "AI Error, but News Detected: No Title"
+        "summary": "News: No Title"
       }
     }
   ]
