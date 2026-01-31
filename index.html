@@ -3,83 +3,235 @@
     <html>
     <head>
         <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <meta http-equiv="refresh" content="60"> <title>SNIPER V9 // COMMAND CENTER</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+        <title>SNIPER V9 PRO</title>
         
     <style>
-        :root { --bg: #0a0a0a; --card: #1c1c1c; --text: #e0e0e0; --accent: #00ff41; --danger: #ff2a2a; --warn: #ffcc00; }
-        body { background-color: var(--bg); color: var(--text); font-family: 'Courier New', Courier, monospace; margin: 0; padding: 20px; }
-        .container { max_width: 800px; margin: 0 auto; border: 1px solid #333; padding: 20px; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
-        h1 { text-align: center; color: var(--accent); text-transform: uppercase; border-bottom: 2px solid var(--accent); padding-bottom: 10px; letter-spacing: 2px; }
-        .meta { text-align: center; color: #666; font-size: 0.8em; margin-bottom: 30px; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
         
-        .card { background: var(--card); border-left: 5px solid #555; margin-bottom: 20px; padding: 15px; position: relative; }
-        .card.ENGAGE { border-left-color: var(--accent); background: linear-gradient(90deg, #001a05 0%, #1c1c1c 100%); }
-        .card.WATCH { border-left-color: var(--warn); }
-        .card.DISCARD { border-left-color: var(--danger); opacity: 0.7; }
+        :root {
+            --bg-color: #0f172a;       /* Slate 900 */
+            --card-bg: #1e293b;        /* Slate 800 */
+            --text-main: #f8fafc;      /* Slate 50 */
+            --text-sub: #94a3b8;       /* Slate 400 */
+            --accent-green: #10b981;   /* Emerald 500 */
+            --accent-yellow: #f59e0b;  /* Amber 500 */
+            --accent-red: #ef4444;     /* Red 500 */
+            --border-color: #334155;   /* Slate 700 */
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Inter', -apple-system, sans-serif;
+            margin: 0;
+            padding: 20px;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* HEADER & STATUS BAR */
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .header h1 {
+            font-size: 1.2rem;
+            color: var(--accent-yellow);
+            letter-spacing: 1px;
+            margin: 0;
+            text-transform: uppercase;
+        }
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            background: #020617;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+            border: 1px solid var(--border-color);
+            font-size: 0.8rem;
+            color: var(--text-sub);
+        }
+        .status-item span { color: var(--text-main); font-weight: bold; }
+
+        /* CARD DESIGN */
+        .card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            border: 1px solid var(--border-color);
+            transition: transform 0.2s;
+        }
         
-        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 10px; }
-        .symbol { font-size: 1.8em; font-weight: bold; color: #fff; }
-        .badge { padding: 5px 10px; border-radius: 2px; font-weight: bold; color: #000; font-size: 0.9em; }
-        .badge.ENGAGE { background-color: var(--accent); box-shadow: 0 0 10px var(--accent); }
-        .badge.WATCH { background-color: var(--warn); }
-        .badge.DISCARD { background-color: var(--danger); }
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+        }
         
-        .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 15px; text-align: center; }
-        .stat-box { background: #2a2a2a; padding: 5px; border-radius: 4px; }
-        .stat-label { font-size: 0.7em; color: #888; display: block; }
-        .stat-val { font-size: 1.1em; font-weight: bold; color: #fff; }
+        .symbol { font-size: 1.5rem; font-weight: 800; color: #fff; }
         
-        .thesis { background: #000; padding: 15px; border: 1px dashed #444; color: #bbb; font-style: italic; line-height: 1.4; }
-        .execution { margin-top: 15px; padding: 10px; background: rgba(0, 255, 65, 0.1); border: 1px solid var(--accent); color: var(--accent); font-weight: bold; text-align: center; text-transform: uppercase; animation: pulse 2s infinite; }
-        
-        @keyframes pulse { 0% { opacity: 0.8; } 50% { opacity: 1; } 100% { opacity: 0.8; } }
-        .footer { text-align: center; margin-top: 40px; border-top: 1px solid #333; padding-top: 10px; font-size: 0.8em; color: #444; }
+        .badge {
+            padding: 4px 12px;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        .badge.ENGAGE { background: rgba(16, 185, 129, 0.2); color: var(--accent-green); border: 1px solid var(--accent-green); }
+        .badge.WATCH { background: rgba(245, 158, 11, 0.2); color: var(--accent-yellow); border: 1px solid var(--accent-yellow); }
+        .badge.DISCARD { background: rgba(239, 68, 68, 0.2); color: var(--accent-red); border: 1px solid var(--accent-red); }
+
+        /* SCORES GRID */
+        .metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .metric-box {
+            background: #0f172a;
+            padding: 8px;
+            border-radius: 6px;
+            text-align: center;
+        }
+        .metric-label { font-size: 0.65rem; color: var(--text-sub); display: block; margin-bottom: 2px; }
+        .metric-val { font-size: 0.9rem; font-weight: 600; color: var(--text-main); }
+
+        /* THESIS TEXT */
+        .thesis {
+            background: rgba(0,0,0,0.2);
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            line-height: 1.5;
+            color: #cbd5e1;
+            border-left: 3px solid var(--border-color);
+        }
+
+        /* EXECUTION ACTION */
+        .action-btn {
+            margin-top: 15px;
+            background: var(--accent-green);
+            color: #000;
+            text-align: center;
+            padding: 10px;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 0.9rem;
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.4);
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            font-size: 0.7rem;
+            color: var(--text-sub);
+            opacity: 0.5;
+        }
     </style>
     
     </head>
     <body>
         <div class="container">
-            <h1>Hybrid Sniper V9</h1>
-            <div class="meta">SYSTEM STATUS: ONLINE /// LAST UPDATE: 2026-01-31 16:44:32</div>
+            <div class="header">
+                <h1>Hybrid Sniper V9</h1>
+                <div class="status-bar">
+                    <div class="status-item">TARGETS: <span>3</span></div>
+                    <div class="status-item">ENGAGE: <span style="color:#10b981">0</span></div>
+                    <div class="status-item">WATCH: <span style="color:#f59e0b">3</span></div>
+                </div>
+                <div style="font-size: 0.7rem; color: #64748b; margin-top: 5px;">
+                    UPDATED: 17:00:53
+                </div>
+            </div>
     
-        <div class="card DISCARD">
-            <div class="header">
+        <div class="card">
+            <div class="card-header">
                 <span class="symbol">TSLA</span>
-                <span class="badge DISCARD">DISCARD</span>
+                <span class="badge WATCH">WATCH</span>
             </div>
-            <div class="grid">
-                <div class="stat-box"><span class="stat-label">CHART</span><span class="stat-val">92.5</span></div>
-                <div class="stat-box"><span class="stat-label">AI REASON</span><span class="stat-val">30</span></div>
-                <div class="stat-box"><span class="stat-label">RISK</span><span class="stat-val">MEDIUM</span></div>
+            
+            <div class="metrics">
+                <div class="metric-box">
+                    <span class="metric-label">TECH SCORE</span>
+                    <span class="metric-val">92.5</span>
+                </div>
+                <div class="metric-box">
+                    <span class="metric-label">AI SCORE</span>
+                    <span class="metric-val">0</span>
+                </div>
+                <div class="metric-box">
+                    <span class="metric-label">RISK LEVEL</span>
+                    <span class="metric-val" style="color:#10b981">ERROR</span>
+                </div>
             </div>
-            <div class="thesis">"News is primarily speculative mergers, earnings expectations and negative views on valuation; no clear turnaround signals are visible and potential reputational risk is present."</div>
+            
+            <div class="thesis">
+                Analysis failed: 429 Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details.
+            </div>
         </div>
-        <div class="card WATCH">
-            <div class="header">
+        <div class="card">
+            <div class="card-header">
                 <span class="symbol">NVDA</span>
                 <span class="badge WATCH">WATCH</span>
             </div>
-            <div class="grid">
-                <div class="stat-box"><span class="stat-label">CHART</span><span class="stat-val">88.0</span></div>
-                <div class="stat-box"><span class="stat-label">AI REASON</span><span class="stat-val">55</span></div>
-                <div class="stat-box"><span class="stat-label">RISK</span><span class="stat-val">MEDIUM</span></div>
+            
+            <div class="metrics">
+                <div class="metric-box">
+                    <span class="metric-label">TECH SCORE</span>
+                    <span class="metric-val">88.0</span>
+                </div>
+                <div class="metric-box">
+                    <span class="metric-label">AI SCORE</span>
+                    <span class="metric-val">50</span>
+                </div>
+                <div class="metric-box">
+                    <span class="metric-label">RISK LEVEL</span>
+                    <span class="metric-val" style="color:#f59e0b">MEDIUM</span>
+                </div>
             </div>
-            <div class="thesis">"While one Motley Fool article predicts a price surge driven by robotaxis, and another suggests considering alternatives, the stalled OpenAI investment and Intel's stock reaction introduce too much uncertainty to confidently enter a turnaround position."</div>
+            
+            <div class="thesis">
+                Mixed signals; a stalled $100B investment offsets a potentially overzealous price target prediction, requiring cautious observation.
+            </div>
         </div>
-        <div class="card DISCARD">
-            <div class="header">
+        <div class="card">
+            <div class="card-header">
                 <span class="symbol">PLTR</span>
-                <span class="badge DISCARD">DISCARD</span>
+                <span class="badge WATCH">WATCH</span>
             </div>
-            <div class="grid">
-                <div class="stat-box"><span class="stat-label">CHART</span><span class="stat-val">45.0</span></div>
-                <div class="stat-box"><span class="stat-label">AI REASON</span><span class="stat-val">30</span></div>
-                <div class="stat-box"><span class="stat-label">RISK</span><span class="stat-val">LOW</span></div>
+            
+            <div class="metrics">
+                <div class="metric-box">
+                    <span class="metric-label">TECH SCORE</span>
+                    <span class="metric-val">45.0</span>
+                </div>
+                <div class="metric-box">
+                    <span class="metric-label">AI SCORE</span>
+                    <span class="metric-val">50</span>
+                </div>
+                <div class="metric-box">
+                    <span class="metric-label">RISK LEVEL</span>
+                    <span class="metric-val" style="color:#f59e0b">MEDIUM</span>
+                </div>
             </div>
-            <div class="thesis">"The available news articles are speculative, focusing on earnings expectations rather than concrete turnaround indicators, and thus do not provide sufficient evidence to consider a turnaround entry."</div>
-        <div class="execution">⚡ SOLDIER ENGAGED: $1,000 DEPLOYED ⚡</div></div>
-            <div class="footer">SECURE CONNECTION // COMMANDER EYES ONLY</div>
+            
+            <div class="thesis">
+                The news is mixed and earnings are imminent, suggesting uncertainty and a need to wait for more concrete information before making a decision.
+            </div>
+        <div class="action-btn">⚡ $1,000 ORDER EXECUTED</div></div>
+            <div class="footer">ENGINE: V9.2 / UI: SLATE-PRO / SECURE CONNECTION</div>
         </div>
     </body>
     </html>
