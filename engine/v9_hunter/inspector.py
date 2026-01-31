@@ -1,101 +1,78 @@
 import os
 import json
-import re
 import google.generativeai as genai
+from datetime import datetime
 
 class NewsInspector:
     def __init__(self):
-        self.api_key = os.getenv("GEMINI_API_KEY")
-        if not self.api_key:
-            print("❌ [Inspector] Critical Error: GEMINI_API_KEY not found.")
-            self.model = None
+        # API 키 설정
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if api_key:
+            genai.configure(api_key=api_key)
+            self.model = genai.GenerativeModel("gemini-1.5-flash")
         else:
-            genai.configure(api_key=self.api_key)
-            # [FIX] 최신 모델 장착: gemini-2.0-flash
-            self.model = genai.GenerativeModel('gemini-2.0-flash')
+            self.model = None
 
-    def _clean_json_text(self, text):
-        """LLM 응답에서 순수 JSON 부분만 추출"""
-        try:
-            text = re.sub(r'```json\s*', '', text)
-            text = re.sub(r'```', '', text)
-            start = text.find('{')
-            end = text.rfind('}') + 1
-            if start != -1 and end != -1:
-                return text[start:end]
-            return text
-        except:
-            return text
-
-    def analyze(self, symbol: str, news_list: list) -> dict:
+    def analyze(self, symbol, news_list):
+        # 1. 뉴스가 없으면 즉시 복귀
         if not news_list:
-            return {
-                "symbol": symbol,
-                "reasoning_score": 0,
-                "risk_level": "UNKNOWN",
-                "action": "DISCARD",
-                "thesis_summary": "No news found."
-            }
+            return {"symbol": symbol, "action": "DISCARD", "thesis": {"summary": "No news data available."}}
 
+        # 2. 뉴스 데이터 텍스트화
+        news_text = "\n".join([f"- {n['title']} ({n['published']})" for n in news_list[:5]])
+
+        # 3. AI에게 물어보기
         if not self.model:
-            return {
-                "symbol": symbol,
-                "reasoning_score": 0,
-                "risk_level": "ERROR",
-                "action": "DISCARD",
-                "thesis_summary": "API Key Missing."
-            }
+            return {"symbol": symbol, "action": "WATCH", "reasoning_score": 10, "risk_level": "LOW", "thesis": {"summary": f"System Alert: API Key missing. News found: {news_list[0]['title']}"}}
 
-        news_text = "\n".join([f"- [{n['published']}] {n['title']}" for n in news_list])
-        
-        # 프롬프트: AI에게 뉴스 분석 요청
         prompt = f"""
-        Role: You are a professional cynical market analyst (The Hunter).
-        Task: Analyze the recent news for {symbol} and decide if it's a valid turnaround entry target.
+        You are a Wall Street Sniper. Analyze the following news for {symbol}.
         
-        [News Data]
+        [NEWS DATA]
         {news_text}
         
-        [Evaluation Logic]
-        1. Ignore generic noise or ad-like articles.
-        2. Look for CLEAR turnaround signals: Earnings Beat, Guidance Raise, New Contract.
-        3. Identify Fatal Risks: Fraud, Delisting, Bankruptcy.
+        [INSTRUCTIONS]
+        1. Decide ACTION: 'WATCH' (if good news/momentum) or 'DISCARD' (if bad/boring).
+        2. Score (0-100) based on catalyst strength.
+        3. Risk: 'LOW', 'MEDIUM', 'HIGH'.
+        4. Summary: One concise sentence explaining WHY. (Korean translation preferred if possible, else English).
         
-        [Output Format]
-        Provide the result strictly in JSON format:
+        [OUTPUT FORMAT]
+        Return ONLY valid JSON:
         {{
-            "reasoning_score": <int 0-100>,
-            "risk_level": "LOW" | "MEDIUM" | "HIGH",
-            "action": "ENGAGE" | "WATCH" | "DISCARD",
-            "thesis_summary": "<One short sentence explaining why>"
+            "action": "WATCH" or "DISCARD",
+            "score": 50,
+            "risk": "MEDIUM",
+            "summary": "Key reason..."
         }}
-        
-        * Rules for 'action':
-        - ENGAGE: Score > 75 AND Risk == LOW (Must have clear good news)
-        - WATCH: Score 40-75 (Ambiguous or mixed)
-        - DISCARD: Score < 40 OR Risk == HIGH (Bad news)
         """
-
+        
         try:
-            # 실제 API 호출
             response = self.model.generate_content(prompt)
             
-            cleaned_text = self._clean_json_text(response.text)
-            result = json.loads(cleaned_text)
+            # JSON 파싱 (마크다운 제거)
+            raw_text = response.text.replace("```json", "").replace("```", "").strip()
+            data = json.loads(raw_text)
             
-            result["symbol"] = symbol
-            return result
-
-        except Exception as e:
             return {
                 "symbol": symbol,
-                "reasoning_score": 0,
-                "risk_level": "ERROR",
-                "action": "WATCH",
-                "thesis_summary": f"Analysis failed: {str(e)}"
+                "action": data.get("action", "WATCH"),
+                "reasoning_score": data.get("score", 0),
+                "risk_level": data.get("risk", "MEDIUM"),
+                "thesis": {
+                    "summary": data.get("summary", f"Analysis complete based on {len(news_list)} articles.")
+                },
+                "last_updated": datetime.now().strftime("%H:%M")
             }
-
-if __name__ == "__main__":
-    inspector = NewsInspector()
-    dummy_news = [{"published": "2026-02-01", "title": "Tesla announces record breaking deliveries"}]
-    print(inspector.analyze("TSLA", dummy_news))
+            
+        except Exception as e:
+            # 실패 시 비상 리포트 작성 (뉴스 제목이라도 보여주기)
+            print(f"   ⚠️ Parsing Error on {symbol}: {e}")
+            fallback_summary = f"AI Error, but News Detected: {news_list[0]['title']}"
+            return {
+                "symbol": symbol,
+                "action": "WATCH", # 에러가 나도 뉴스가 있으면 일단 보여줌
+                "reasoning_score": 10,
+                "risk_level": "ERROR",
+                "thesis": {"summary": fallback_summary}
+            }

@@ -1,4 +1,4 @@
-/workspaces/Final-Engine/engine/v9_hunter/inspector.py:4: FutureWarning: 
+/workspaces/Final-Engine/engine/v9_hunter/inspector.py:3: FutureWarning: 
 
 All support for the `google.generativeai` package has ended. It will no longer be receiving 
 updates or bug fixes. Please switch to the `google.genai` package as soon as possible.
@@ -10,44 +10,64 @@ https://github.com/google-gemini/deprecated-generative-ai-python/blob/main/READM
 🚀 [Hunter] Mission Start: Loading Targets...
 🎯 Targets Identified: 20 sectors
 📡 Scanning: AAPL...
-   👉 Result: DISCARD
+   ⚠️ Parsing Error on AAPL: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   👉 Result: WATCH
 📡 Scanning: MSFT...
-   👉 Result: DISCARD
+   ⚠️ Parsing Error on MSFT: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   👉 Result: WATCH
 📡 Scanning: GOOGL...
-   👉 Result: DISCARD
+   ⚠️ Parsing Error on GOOGL: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   👉 Result: WATCH
 📡 Scanning: AMZN...
-   👉 Result: DISCARD
+   ⚠️ Parsing Error on AMZN: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   👉 Result: WATCH
 📡 Scanning: NVDA...
-   👉 Result: DISCARD
+   ⚠️ Parsing Error on NVDA: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   👉 Result: WATCH
 📡 Scanning: TSLA...
-   👉 Result: DISCARD
+   ⚠️ Parsing Error on TSLA: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   👉 Result: WATCH
 📡 Scanning: META...
-   👉 Result: DISCARD
+   ⚠️ Parsing Error on META: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   👉 Result: WATCH
 📡 Scanning: BRK-B...
-   👉 Result: DISCARD
+   ⚠️ Parsing Error on BRK-B: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   👉 Result: WATCH
 📡 Scanning: V...
-   👉 Result: DISCARD
+   ⚠️ Parsing Error on V: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   👉 Result: WATCH
 📡 Scanning: UNH...
-   👉 Result: DISCARD
+   ⚠️ Parsing Error on UNH: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   👉 Result: WATCH
 📡 Scanning: XOM...
-   👉 Result: DISCARD
+   ⚠️ Parsing Error on XOM: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   👉 Result: WATCH
 📡 Scanning: JNJ...
-   👉 Result: DISCARD
+   ⚠️ Parsing Error on JNJ: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   👉 Result: WATCH
 📡 Scanning: JPM...
-   👉 Result: DISCARD
+   ⚠️ Parsing Error on JPM: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   👉 Result: WATCH
 📡 Scanning: WMT...
-   👉 Result: DISCARD
+   ⚠️ Parsing Error on WMT: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   👉 Result: WATCH
 📡 Scanning: PG...
-   👉 Result: DISCARD
+   ⚠️ Parsing Error on PG: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   👉 Result: WATCH
 📡 Scanning: MA...
+   ⚠️ Parsing Error on MA: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
    👉 Result: WATCH
 📡 Scanning: LLY...
+   ⚠️ Parsing Error on LLY: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
    👉 Result: WATCH
 📡 Scanning: CVX...
-   👉 Result: DISCARD
+   ⚠️ Parsing Error on CVX: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   👉 Result: WATCH
 📡 Scanning: HD...
+   ⚠️ Parsing Error on HD: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
    👉 Result: WATCH
 📡 Scanning: MRK...
-   👉 Result: DISCARD
+   ⚠️ Parsing Error on MRK: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+   👉 Result: WATCH
 ✅ [Hunter] Mission Complete. 20 reports filed.
 🎨 [Dashboard] V11.5 Style Upgrade Applied: index.html
