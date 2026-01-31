@@ -6,8 +6,8 @@ from datetime import datetime
 class NewsInspector:
     def __init__(self):
         self.api_key = os.environ.get("GEMINI_API_KEY")
-        # [변경] 가장 범용적인 'gemini-pro' 모델 사용
-        self.base_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
+        # [수정] 사령관님 지시: -latest 접미사 추가 (활성 모델 강제 지정)
+        self.base_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent"
 
     def analyze(self, symbol, news_list):
         if not news_list:
@@ -16,9 +16,10 @@ class NewsInspector:
         if not self.api_key:
             return {"symbol": symbol, "action": "WATCH", "risk_level": "ERROR", "thesis": {"summary": "API Key Missing"}}
 
+        # 뉴스 데이터 준비
         news_text = "\n".join([f"- {n['title']}" for n in news_list[:3]])
 
-        # Gemini Pro용 데이터 포맷
+        # 요청 데이터 (JSON 구조)
         payload = {
             "contents": [{
                 "parts": [{
@@ -33,8 +34,8 @@ class NewsInspector:
                     {{
                         "action": "WATCH" or "DISCARD",
                         "score": 0-100,
-                        "risk": "LOW" or "MEDIUM",
-                        "summary": "One short sentence in Korean."
+                        "risk": "LOW" or "MEDIUM" or "HIGH",
+                        "summary": "One concise sentence reason in Korean."
                     }}
                     """
                 }]
@@ -42,26 +43,29 @@ class NewsInspector:
         }
 
         try:
+            # HTTP 요청 전송
             response = requests.post(
                 f"{self.base_url}?key={self.api_key}",
                 headers={"Content-Type": "application/json"},
                 json=payload
             )
             
+            # 응답 코드 확인
             if response.status_code != 200:
-                # 에러 발생 시 상세 내용 출력
                 print(f"   ⚠️ API Error {response.status_code}: {response.text[:100]}...")
-                raise Exception("API Request Failed")
+                # 404가 또 뜨면 모델 리스트라도 보여주기 위해 에러 발생
+                raise Exception(f"API Failed: {response.status_code}")
 
+            # 응답 파싱
             result = response.json()
-            # 안전한 파싱
             try:
                 raw_text = result['candidates'][0]['content']['parts'][0]['text']
-            except:
+            except (KeyError, IndexError):
+                # 모델은 응답했는데 내용이 비어있을 경우
                 raw_text = "{}"
 
             clean_text = raw_text.replace("```json", "").replace("```", "").strip()
-            # JSON 파싱 시도 (실패시 빈 딕셔너리)
+            
             try:
                 data = json.loads(clean_text)
             except:
@@ -77,6 +81,7 @@ class NewsInspector:
             }
 
         except Exception as e:
+            # 최후의 수단: 에러가 나도 뉴스는 보여준다
             return {
                 "symbol": symbol,
                 "action": "WATCH",
