@@ -1,124 +1,45 @@
 🚀 [Hunter] Mission Start: Loading Targets...
 🎯 Targets Identified: 20 sectors
 📡 Scanning: AAPL...
-   ⚠️ API Error 404: {
-  "error": {
-    "code": 404,
-    "message": "models/gemini-1.5-flash-latest is not found for API ...
-   👉 Result: WATCH
+   🤖 Locked on Model: models/gemini-pro-latest
+   👉 Result: DISCARD
 📡 Scanning: MSFT...
-   ⚠️ API Error 404: {
-  "error": {
-    "code": 404,
-    "message": "models/gemini-1.5-flash-latest is not found for API ...
-   👉 Result: WATCH
+   👉 Result: DISCARD
 📡 Scanning: GOOGL...
-   ⚠️ API Error 404: {
-  "error": {
-    "code": 404,
-    "message": "models/gemini-1.5-flash-latest is not found for API ...
-   👉 Result: WATCH
+   👉 Result: DISCARD
 📡 Scanning: AMZN...
-   ⚠️ API Error 404: {
-  "error": {
-    "code": 404,
-    "message": "models/gemini-1.5-flash-latest is not found for API ...
-   👉 Result: WATCH
+   👉 Result: DISCARD
 📡 Scanning: NVDA...
-   ⚠️ API Error 404: {
-  "error": {
-    "code": 404,
-    "message": "models/gemini-1.5-flash-latest is not found for API ...
-   👉 Result: WATCH
+   👉 Result: DISCARD
 📡 Scanning: TSLA...
-   ⚠️ API Error 404: {
-  "error": {
-    "code": 404,
-    "message": "models/gemini-1.5-flash-latest is not found for API ...
-   👉 Result: WATCH
+   👉 Result: DISCARD
 📡 Scanning: META...
-   ⚠️ API Error 404: {
-  "error": {
-    "code": 404,
-    "message": "models/gemini-1.5-flash-latest is not found for API ...
-   👉 Result: WATCH
+   👉 Result: DISCARD
 📡 Scanning: BRK-B...
-   ⚠️ API Error 404: {
-  "error": {
-    "code": 404,
-    "message": "models/gemini-1.5-flash-latest is not found for API ...
-   👉 Result: WATCH
+   👉 Result: DISCARD
 📡 Scanning: V...
-   ⚠️ API Error 404: {
-  "error": {
-    "code": 404,
-    "message": "models/gemini-1.5-flash-latest is not found for API ...
-   👉 Result: WATCH
+   👉 Result: DISCARD
 📡 Scanning: UNH...
-   ⚠️ API Error 404: {
-  "error": {
-    "code": 404,
-    "message": "models/gemini-1.5-flash-latest is not found for API ...
-   👉 Result: WATCH
+   👉 Result: DISCARD
 📡 Scanning: XOM...
-   ⚠️ API Error 404: {
-  "error": {
-    "code": 404,
-    "message": "models/gemini-1.5-flash-latest is not found for API ...
-   👉 Result: WATCH
+   👉 Result: DISCARD
 📡 Scanning: JNJ...
-   ⚠️ API Error 404: {
-  "error": {
-    "code": 404,
-    "message": "models/gemini-1.5-flash-latest is not found for API ...
-   👉 Result: WATCH
+   👉 Result: DISCARD
 📡 Scanning: JPM...
-   ⚠️ API Error 404: {
-  "error": {
-    "code": 404,
-    "message": "models/gemini-1.5-flash-latest is not found for API ...
-   👉 Result: WATCH
+   👉 Result: DISCARD
 📡 Scanning: WMT...
-   ⚠️ API Error 404: {
-  "error": {
-    "code": 404,
-    "message": "models/gemini-1.5-flash-latest is not found for API ...
-   👉 Result: WATCH
+   👉 Result: DISCARD
 📡 Scanning: PG...
-   ⚠️ API Error 404: {
-  "error": {
-    "code": 404,
-    "message": "models/gemini-1.5-flash-latest is not found for API ...
-   👉 Result: WATCH
+   👉 Result: DISCARD
 📡 Scanning: MA...
-   ⚠️ API Error 404: {
-  "error": {
-    "code": 404,
-    "message": "models/gemini-1.5-flash-latest is not found for API ...
-   👉 Result: WATCH
+   👉 Result: DISCARD
 📡 Scanning: LLY...
-   ⚠️ API Error 404: {
-  "error": {
-    "code": 404,
-    "message": "models/gemini-1.5-flash-latest is not found for API ...
-   👉 Result: WATCH
+   👉 Result: DISCARD
 📡 Scanning: CVX...
-   ⚠️ API Error 404: {
-  "error": {
-    "code": 404,
-    "message": "models/gemini-1.5-flash-latest is not found for API ...
-   👉 Result: WATCH
+   👉 Result: DISCARD
 📡 Scanning: HD...
-   ⚠️ API Error 404: {
-  "error": {
-    "code": 404,
-    "message": "models/gemini-1.5-flash-latest is not found for API ...
-   👉 Result: WATCH
+   👉 Result: DISCARD
 📡 Scanning: MRK...
-   ⚠️ API Error 404: {
-  "error": {
-    "code": 404,
-    "message": "models/gemini-1.5-flash-latest is not found for API ...
-   👉 Result: WATCH
+   👉 Result: DISCARD
 ✅ [Hunter] Mission Complete. 20 reports filed.
 🎨 [Dashboard] V11.5 Style Upgrade Applied: index.html

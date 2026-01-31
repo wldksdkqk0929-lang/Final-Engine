@@ -4,183 +4,203 @@
   "dossier": [
     {
       "symbol": "AAPL",
-      "action": "WATCH",
-      "reasoning_score": 10,
-      "risk_level": "ERROR",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
       "thesis": {
-        "summary": "News: No Title"
-      }
+        "summary": "분석할 뉴스 내용이 없습니다."
+      },
+      "last_updated": "17:36"
     },
     {
       "symbol": "MSFT",
-      "action": "WATCH",
-      "reasoning_score": 10,
-      "risk_level": "ERROR",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
       "thesis": {
-        "summary": "News: No Title"
-      }
+        "summary": "분석할 뉴스 내용이 없습니다."
+      },
+      "last_updated": "17:36"
     },
     {
       "symbol": "GOOGL",
-      "action": "WATCH",
-      "reasoning_score": 10,
-      "risk_level": "ERROR",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
       "thesis": {
-        "summary": "News: No Title"
-      }
+        "summary": "분석할 뉴스 내용이 없습니다."
+      },
+      "last_updated": "17:36"
     },
     {
       "symbol": "AMZN",
-      "action": "WATCH",
-      "reasoning_score": 10,
-      "risk_level": "ERROR",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
       "thesis": {
-        "summary": "News: No Title"
-      }
+        "summary": "분석할 뉴스 내용이 없습니다."
+      },
+      "last_updated": "17:36"
     },
     {
       "symbol": "NVDA",
-      "action": "WATCH",
-      "reasoning_score": 10,
-      "risk_level": "ERROR",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
       "thesis": {
-        "summary": "News: No Title"
-      }
+        "summary": "분석할 뉴스 내용이 없습니다."
+      },
+      "last_updated": "17:36"
     },
     {
       "symbol": "TSLA",
-      "action": "WATCH",
-      "reasoning_score": 10,
-      "risk_level": "ERROR",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
       "thesis": {
-        "summary": "News: No Title"
-      }
+        "summary": "분석할 뉴스 내용이 없습니다."
+      },
+      "last_updated": "17:36"
     },
     {
       "symbol": "META",
-      "action": "WATCH",
-      "reasoning_score": 10,
-      "risk_level": "ERROR",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
       "thesis": {
-        "summary": "News: No Title"
-      }
+        "summary": "분석할 뉴스의 내용이 없습니다."
+      },
+      "last_updated": "17:36"
     },
     {
       "symbol": "BRK-B",
-      "action": "WATCH",
-      "reasoning_score": 10,
-      "risk_level": "ERROR",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
       "thesis": {
-        "summary": "News: No Title"
-      }
+        "summary": "분석할 뉴스 내용이 제공되지 않았습니다."
+      },
+      "last_updated": "17:37"
     },
     {
       "symbol": "V",
-      "action": "WATCH",
-      "reasoning_score": 10,
-      "risk_level": "ERROR",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
       "thesis": {
-        "summary": "News: No Title"
-      }
+        "summary": "분석할 뉴스 내용이 없습니다."
+      },
+      "last_updated": "17:37"
     },
     {
       "symbol": "UNH",
-      "action": "WATCH",
-      "reasoning_score": 10,
-      "risk_level": "ERROR",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
       "thesis": {
-        "summary": "News: No Title"
-      }
+        "summary": "분석할 뉴스 내용이 없습니다."
+      },
+      "last_updated": "17:37"
     },
     {
       "symbol": "XOM",
-      "action": "WATCH",
-      "reasoning_score": 10,
-      "risk_level": "ERROR",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
       "thesis": {
-        "summary": "News: No Title"
-      }
+        "summary": "분석할 뉴스 내용이 없습니다."
+      },
+      "last_updated": "17:37"
     },
     {
       "symbol": "JNJ",
-      "action": "WATCH",
-      "reasoning_score": 10,
-      "risk_level": "ERROR",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
       "thesis": {
-        "summary": "News: No Title"
-      }
+        "summary": "분석할 뉴스 내용이 없습니다."
+      },
+      "last_updated": "17:37"
     },
     {
       "symbol": "JPM",
-      "action": "WATCH",
-      "reasoning_score": 10,
-      "risk_level": "ERROR",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
       "thesis": {
-        "summary": "News: No Title"
-      }
+        "summary": "분석할 뉴스 내용이 없습니다."
+      },
+      "last_updated": "17:37"
     },
     {
       "symbol": "WMT",
-      "action": "WATCH",
-      "reasoning_score": 10,
-      "risk_level": "ERROR",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
       "thesis": {
-        "summary": "News: No Title"
-      }
+        "summary": "분석할 뉴스 내용이 없습니다."
+      },
+      "last_updated": "17:37"
     },
     {
       "symbol": "PG",
-      "action": "WATCH",
-      "reasoning_score": 10,
-      "risk_level": "ERROR",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
       "thesis": {
-        "summary": "News: No Title"
-      }
+        "summary": "분석할 뉴스 내용이 없습니다."
+      },
+      "last_updated": "17:37"
     },
     {
       "symbol": "MA",
-      "action": "WATCH",
-      "reasoning_score": 10,
-      "risk_level": "ERROR",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
       "thesis": {
-        "summary": "News: No Title"
-      }
+        "summary": "분석할 뉴스 내용이 없습니다."
+      },
+      "last_updated": "17:38"
     },
     {
       "symbol": "LLY",
-      "action": "WATCH",
-      "reasoning_score": 10,
-      "risk_level": "ERROR",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
       "thesis": {
-        "summary": "News: No Title"
-      }
+        "summary": "분석할 뉴스 내용이 없습니다."
+      },
+      "last_updated": "17:38"
     },
     {
       "symbol": "CVX",
-      "action": "WATCH",
-      "reasoning_score": 10,
-      "risk_level": "ERROR",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
       "thesis": {
-        "summary": "News: No Title"
-      }
+        "summary": "분석할 뉴스 내용이 없습니다."
+      },
+      "last_updated": "17:38"
     },
     {
       "symbol": "HD",
-      "action": "WATCH",
-      "reasoning_score": 10,
-      "risk_level": "ERROR",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
       "thesis": {
-        "summary": "News: No Title"
-      }
+        "summary": "분석할 뉴스 내용이 없습니다."
+      },
+      "last_updated": "17:38"
     },
     {
       "symbol": "MRK",
-      "action": "WATCH",
-      "reasoning_score": 10,
-      "risk_level": "ERROR",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
       "thesis": {
-        "summary": "News: No Title"
-      }
+        "summary": "분석할 뉴스 내용이 없습니다."
+      },
+      "last_updated": "17:38"
     }
   ]
 }

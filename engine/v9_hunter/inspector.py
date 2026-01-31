@@ -6,25 +6,64 @@ from datetime import datetime
 class NewsInspector:
     def __init__(self):
         self.api_key = os.environ.get("GEMINI_API_KEY")
-        # [수정] 사령관님 지시: -latest 접미사 추가 (활성 모델 강제 지정)
-        self.base_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent"
+        self.base_url = "https://generativelanguage.googleapis.com/v1beta"
+        self.model_endpoint = None # 나중에 자동으로 채워짐
+
+    def get_working_model(self):
+        """현재 API 키로 사용 가능한 모델을 자동으로 찾습니다."""
+        try:
+            url = f"{self.base_url}/models?key={self.api_key}"
+            response = requests.get(url)
+            
+            if response.status_code != 200:
+                print(f"   ⚠️ Failed to list models: {response.status_code}")
+                return None
+                
+            models = response.json().get('models', [])
+            
+            # 1순위: 1.5-flash, 2순위: pro, 3순위: 아무 gemini 모델
+            candidates = [m for m in models if 'generateContent' in m.get('supportedGenerationMethods', [])]
+            
+            # 우선순위 로직
+            for m in candidates:
+                if 'gemini-1.5-flash' in m['name']:
+                    return m['name']
+            for m in candidates:
+                if 'gemini-pro' in m['name']:
+                    return m['name']
+            if candidates:
+                return candidates[0]['name'] # 뭐라도 있으면 쓴다
+                
+            return None
+        except Exception as e:
+            print(f"   ⚠️ Auto-Discovery Error: {e}")
+            return None
 
     def analyze(self, symbol, news_list):
         if not news_list:
-            return {"symbol": symbol, "action": "DISCARD", "thesis": {"summary": "No news detected."}}
+            return {"symbol": symbol, "action": "DISCARD", "thesis": {"summary": "No news."}}
 
         if not self.api_key:
             return {"symbol": symbol, "action": "WATCH", "risk_level": "ERROR", "thesis": {"summary": "API Key Missing"}}
 
-        # 뉴스 데이터 준비
+        # [자동 탐색] 모델이 아직 설정 안 됐으면 찾기
+        if not self.model_endpoint:
+            model_name = self.get_working_model()
+            if model_name:
+                # model_name은 'models/gemini-1.5-flash-001' 형태임
+                print(f"   🤖 Locked on Model: {model_name}")
+                self.model_endpoint = f"{self.base_url}/{model_name}:generateContent"
+            else:
+                return {"symbol": symbol, "action": "WATCH", "risk_level": "ERROR", "thesis": {"summary": "No Available AI Model Found"}}
+
         news_text = "\n".join([f"- {n['title']}" for n in news_list[:3]])
 
-        # 요청 데이터 (JSON 구조)
+        # 요청 데이터
         payload = {
             "contents": [{
                 "parts": [{
                     "text": f"""
-                    Role: Financial Analyst.
+                    Role: Analyst.
                     Task: Analyze news for {symbol}.
                     
                     NEWS:
@@ -34,7 +73,7 @@ class NewsInspector:
                     {{
                         "action": "WATCH" or "DISCARD",
                         "score": 0-100,
-                        "risk": "LOW" or "MEDIUM" or "HIGH",
+                        "risk": "LOW" or "MEDIUM",
                         "summary": "One concise sentence reason in Korean."
                     }}
                     """
@@ -43,29 +82,23 @@ class NewsInspector:
         }
 
         try:
-            # HTTP 요청 전송
             response = requests.post(
-                f"{self.base_url}?key={self.api_key}",
+                f"{self.model_endpoint}?key={self.api_key}",
                 headers={"Content-Type": "application/json"},
                 json=payload
             )
             
-            # 응답 코드 확인
             if response.status_code != 200:
-                print(f"   ⚠️ API Error {response.status_code}: {response.text[:100]}...")
-                # 404가 또 뜨면 모델 리스트라도 보여주기 위해 에러 발생
-                raise Exception(f"API Failed: {response.status_code}")
+                print(f"   ⚠️ API Error {response.status_code}...")
+                raise Exception("API Request Failed")
 
-            # 응답 파싱
             result = response.json()
             try:
                 raw_text = result['candidates'][0]['content']['parts'][0]['text']
-            except (KeyError, IndexError):
-                # 모델은 응답했는데 내용이 비어있을 경우
+            except:
                 raw_text = "{}"
 
             clean_text = raw_text.replace("```json", "").replace("```", "").strip()
-            
             try:
                 data = json.loads(clean_text)
             except:
@@ -76,16 +109,15 @@ class NewsInspector:
                 "action": data.get("action", "WATCH"),
                 "reasoning_score": data.get("score", 50),
                 "risk_level": data.get("risk", "MEDIUM"),
-                "thesis": {"summary": data.get("summary", f"News found: {news_list[0]['title']}")},
+                "thesis": {"summary": data.get("summary", f"News: {news_list[0]['title']}")},
                 "last_updated": datetime.now().strftime("%H:%M")
             }
 
         except Exception as e:
-            # 최후의 수단: 에러가 나도 뉴스는 보여준다
             return {
                 "symbol": symbol,
                 "action": "WATCH",
                 "reasoning_score": 10,
                 "risk_level": "ERROR",
-                "thesis": {"summary": f"News: {news_list[0]['title']}"}
+                "thesis": {"summary": f"Fallback: {news_list[0]['title']}"}
             }
