@@ -23,12 +23,22 @@
             </div>
         </div>
         <div class="flex gap-3">
-            <div class="hud-box"><span class="text-[10px] text-gray-500 mr-2">SPY</span><span id="spy-v" class="font-bold text-blue-300">--</span></div>
-            <div class="hud-box"><span class="text-[10px] text-gray-500 mr-2">VIX</span><span id="vix-v" class="font-bold text-yellow-300">--</span></div>
-            <div class="text-right ml-2 hidden md:block"><p id="u-time" class="text-[10px] text-gray-500 mt-1">--</p></div>
+            <div class="hud-box">
+                <span class="text-[10px] text-gray-500 mr-2">SPY</span>
+                <span id="spy-v" class="font-bold text-blue-300">--</span>
+            </div>
+            <div class="hud-box">
+                <span class="text-[10px] text-gray-500 mr-2">VIX</span>
+                <span id="vix-v" class="font-bold text-yellow-300">--</span>
+            </div>
+            <div class="text-right ml-2 hidden md:block">
+                <p id="u-time" class="text-[10px] text-gray-500 mt-1">--</p>
+            </div>
         </div>
     </header>
+
     <div id="grid-container" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 transition-all duration-500"></div>
+
     <script>
         async function init() {
             try {
@@ -37,17 +47,29 @@
                 document.getElementById('spy-v').innerText = "$" + mData.spy_price;
                 document.getElementById('vix-v').innerText = mData.vix;
                 document.getElementById('u-time').innerText = mData.timestamp;
+
                 const rRes = await fetch('final_v12_report.json?t=' + Date.now());
                 const reports = await rRes.json();
                 const container = document.getElementById('grid-container');
                 container.innerHTML = '';
+
                 reports.forEach((item, index) => {
                     const card = document.createElement('div');
                     card.className = 'card rounded-lg overflow-hidden';
                     const chartId = `c_${index}`;
-                    card.innerHTML = `<div class="p-4 border-b border-gray-800 flex justify-between bg-gray-900"><span class="font-bold">${item.symbol}</span><span class="text-xs px-2 py-0.5 rounded bg-gray-800">${item.status}</span></div><div id="${chartId}" class="h-40"></div><div class="p-4 text-sm text-gray-400">${item.reason_kr}</div>`;
+                    card.innerHTML = `
+                        <div class="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-900">
+                            <span class="text-xl font-bold">${item.symbol}</span>
+                            <span class="px-2 py-1 text-xs rounded bg-gray-800">${item.status}</span>
+                        </div>
+                        <div id="${chartId}" class="h-40 w-full bg-black"></div>
+                        <div class="p-4 text-sm text-gray-400">${item.reason_kr}</div>
+                    `;
                     container.appendChild(card);
-                    new TradingView.widget({"container_id": chartId, "width": "100%", "height": "100%", "symbol": item.symbol, "interval": "D", "theme": "dark", "style": "1", "locale": "kr", "hide_top_toolbar": true, "hide_side_toolbar": true});
+                    new TradingView.widget({
+                        "container_id": chartId, "width": "100%", "height": "100%", "symbol": item.symbol,
+                        "interval": "D", "theme": "dark", "style": "1", "locale": "kr", "hide_top_toolbar": true, "hide_side_toolbar": true
+                    });
                 });
             } catch (e) { console.error(e); }
         }
