@@ -1,0 +1,198 @@
+{
+  "date": "2026-01-31",
+  "version": "V9.0",
+  "dossier": [
+    {
+      "symbol": "AAPL",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
+      "thesis": {
+        "summary": "분석할 뉴스 제목이나 내용이 제공되지 않았습니다."
+      },
+      "last_updated": "17:39"
+    },
+    {
+      "symbol": "MSFT",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
+      "thesis": {
+        "summary": "분석할 뉴스가 제공되지 않았습니다."
+      },
+      "last_updated": "17:39"
+    },
+    {
+      "symbol": "GOOGL",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
+      "thesis": {
+        "summary": "분석할 유효한 뉴스 제목이나 내용이 제공되지 않았습니다."
+      },
+      "last_updated": "17:40"
+    },
+    {
+      "symbol": "AMZN",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
+      "thesis": {
+        "summary": "분석할 수 있는 뉴스 제목이나 내용이 제공되지 않았습니다."
+      },
+      "last_updated": "17:40"
+    },
+    {
+      "symbol": "NVDA",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
+      "thesis": {
+        "summary": "분석할 뉴스 내용이 제공되지 않았습니다."
+      },
+      "last_updated": "17:40"
+    },
+    {
+      "symbol": "TSLA",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
+      "thesis": {
+        "summary": "분석할 만한 뉴스 제목이나 내용이 제공되지 않았습니다."
+      },
+      "last_updated": "17:40"
+    },
+    {
+      "symbol": "META",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
+      "thesis": {
+        "summary": "분석할 유효한 뉴스 제목이나 내용이 제공되지 않았습니다."
+      },
+      "last_updated": "17:40"
+    },
+    {
+      "symbol": "BRK-B",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
+      "thesis": {
+        "summary": "분석할 뉴스 제목이나 내용이 제공되지 않았습니다."
+      },
+      "last_updated": "17:40"
+    },
+    {
+      "symbol": "V",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
+      "thesis": {
+        "summary": "분석할 V 관련 뉴스 정보가 없습니다."
+      },
+      "last_updated": "17:40"
+    },
+    {
+      "symbol": "UNH",
+      "action": "WATCH",
+      "risk_level": "ERROR",
+      "thesis": {
+        "summary": "News: No Title"
+      }
+    },
+    {
+      "symbol": "XOM",
+      "action": "WATCH",
+      "risk_level": "ERROR",
+      "thesis": {
+        "summary": "News: No Title"
+      }
+    },
+    {
+      "symbol": "JNJ",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
+      "thesis": {
+        "summary": "분석할 뉴스 정보가 제공되지 않았습니다."
+      },
+      "last_updated": "17:41"
+    },
+    {
+      "symbol": "JPM",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
+      "thesis": {
+        "summary": "분석할 JPM 관련 뉴스가 제공되지 않았습니다."
+      },
+      "last_updated": "17:41"
+    },
+    {
+      "symbol": "WMT",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
+      "thesis": {
+        "summary": "분석할 WMT 관련 뉴스가 제공되지 않았습니다."
+      },
+      "last_updated": "17:41"
+    },
+    {
+      "symbol": "PG",
+      "action": "WATCH",
+      "risk_level": "ERROR",
+      "thesis": {
+        "summary": "News: No Title"
+      }
+    },
+    {
+      "symbol": "MA",
+      "action": "WATCH",
+      "risk_level": "ERROR",
+      "thesis": {
+        "summary": "News: No Title"
+      }
+    },
+    {
+      "symbol": "LLY",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
+      "thesis": {
+        "summary": "분석할 LLY 관련 뉴스 정보가 제공되지 않았습니다."
+      },
+      "last_updated": "17:42"
+    },
+    {
+      "symbol": "CVX",
+      "action": "WATCH",
+      "reasoning_score": 85,
+      "risk_level": "MED",
+      "thesis": {
+        "summary": "쉐브론의 헤스(Hess) 인수는 주주 승인을 받았으나, 엑슨모빌과의 중재 분쟁으로 인해 최종 성사 여부가 불투명한 상황입니다."
+      },
+      "last_updated": "17:42"
+    },
+    {
+      "symbol": "HD",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "MED",
+      "thesis": {
+        "summary": "제목이 제공되지 않아 뉴스의 내용을 분석할 수 없습니다."
+      },
+      "last_updated": "17:42"
+    },
+    {
+      "symbol": "MRK",
+      "action": "DISCARD",
+      "reasoning_score": 0,
+      "risk_level": "LOW",
+      "thesis": {
+        "summary": "분석할 뉴스 제목이나 내용이 제공되지 않았습니다."
+      },
+      "last_updated": "17:42"
+    }
+  ]
+}

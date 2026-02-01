@@ -1,0 +1,100 @@
+[
+    {
+        "symbol": "AAPL",
+        "status": "VOL_SPIKE",
+        "drawdown": -10.1,
+        "rsi": 50.2,
+        "vol_ratio": 185.0
+    },
+    {
+        "symbol": "MSFT",
+        "status": "OVERSOLD",
+        "drawdown": -22.26,
+        "rsi": 31.2,
+        "vol_ratio": 178.0
+    },
+    {
+        "symbol": "AMZN",
+        "status": "OVERSOLD",
+        "drawdown": -7.46,
+        "rsi": 40.3,
+        "vol_ratio": 111.0
+    },
+    {
+        "symbol": "TSLA",
+        "status": "OVERSOLD",
+        "drawdown": -13.72,
+        "rsi": 43.5,
+        "vol_ratio": 131.0
+    },
+    {
+        "symbol": "META",
+        "status": "VOL_SPIKE",
+        "drawdown": -9.88,
+        "rsi": 64.2,
+        "vol_ratio": 132.0
+    },
+    {
+        "symbol": "PLTR",
+        "status": "OVERSOLD",
+        "drawdown": -29.36,
+        "rsi": 14.3,
+        "vol_ratio": 120.0
+    },
+    {
+        "symbol": "SOFI",
+        "status": "OVERSOLD",
+        "drawdown": -30.31,
+        "rsi": 16.6,
+        "vol_ratio": 260.0
+    },
+    {
+        "symbol": "PYPL",
+        "status": "OVERSOLD",
+        "drawdown": -33.33,
+        "rsi": 28.6,
+        "vol_ratio": 120.0
+    },
+    {
+        "symbol": "NFLX",
+        "status": "OVERSOLD",
+        "drawdown": -34.11,
+        "rsi": 28.1,
+        "vol_ratio": 87.0
+    },
+    {
+        "symbol": "COIN",
+        "status": "OVERSOLD",
+        "drawdown": -51.58,
+        "rsi": 21.2,
+        "vol_ratio": 104.0
+    },
+    {
+        "symbol": "MARA",
+        "status": "OVERSOLD",
+        "drawdown": -59.49,
+        "rsi": 43.8,
+        "vol_ratio": 90.0
+    },
+    {
+        "symbol": "DKNG",
+        "status": "OVERSOLD",
+        "drawdown": -43.6,
+        "rsi": 17.5,
+        "vol_ratio": 200.0
+    },
+    {
+        "symbol": "HOOD",
+        "status": "OVERSOLD",
+        "drawdown": -35.34,
+        "rsi": 22.0,
+        "vol_ratio": 111.0
+    },
+    {
+        "symbol": "RIVN",
+        "status": "OVERSOLD",
+        "drawdown": -34.99,
+        "rsi": 6.1,
+        "vol_ratio": 86.0
+    }
+]
