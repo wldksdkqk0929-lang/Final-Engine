@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SNIPER V13: COMMAND CENTER</title>
+    <title>SNIPER V13.1: COMMAND CENTER</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
@@ -14,8 +14,6 @@
         .badge-watch { background: #9e6a03; color: white; }
         .badge-trap { background: #30363d; color: #8b949e; }
         .blur-lock { filter: blur(8px); pointer-events: none; opacity: 0.3; }
-        
-        /* 시장 상태 패널 스타일 */
         .status-panel-safe { border-left: 5px solid #238636; background: linear-gradient(90deg, #0d1117 0%, #061c0b 100%); }
         .status-panel-danger { border-left: 5px solid #da3633; background: linear-gradient(90deg, #0d1117 0%, #290808 100%); }
     </style>
@@ -24,21 +22,20 @@
 
     <header class="mb-6 flex justify-between items-end border-b border-gray-700 pb-4">
         <div>
-            <h1 class="text-3xl font-bold text-blue-400">SNIPER <span class="text-white">V13</span></h1>
-            <p class="text-xs text-gray-500">COMMAND CENTER</p>
+            <h1 class="text-3xl font-bold text-blue-400">SNIPER <span class="text-white">V13.1</span></h1>
+            <p class="text-xs text-gray-500">COMMAND CENTER ACTIVE</p>
         </div>
         <div class="text-right">
             <p id="update-time" class="text-xs text-gray-400">CONNECTING...</p>
         </div>
     </header>
 
-    <section id="market-dashboard" class="mb-10 w-full rounded-xl border border-gray-700 p-6 flex flex-col md:flex-row justify-between items-center gap-6 shadow-lg transition-all">
+    <section id="market-dashboard" class="mb-10 w-full rounded-xl border border-gray-700 p-6 flex flex-col md:flex-row justify-between items-center gap-6 shadow-lg">
         <div class="text-center md:text-left">
             <h2 class="text-sm text-gray-400 mb-1">MARKET REGIME</h2>
             <div id="market-regime-text" class="text-3xl font-bold text-white tracking-widest">LOADING...</div>
-            <p id="market-message" class="text-xs text-gray-500 mt-2">Checking Vital Signs...</p>
+            <p id="market-message" class="text-xs text-gray-500 mt-2">...</p>
         </div>
-        
         <div class="flex gap-8 text-center">
             <div>
                 <p class="text-xs text-gray-400">SPY (TREND)</p>
@@ -53,16 +50,9 @@
         </div>
     </section>
 
-    <div id="grid-container" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        </div>
+    <div id="grid-container" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6"></div>
 
-    <div id="danger-overlay" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center">
-        <div class="text-center border-2 border-red-600 p-10 rounded bg-gray-900">
-            <h1 class="text-4xl text-red-500 font-bold mb-4">⛔ TRADING HALTED</h1>
-            <p class="text-gray-300">System locked by Commander Protocol.</p>
-            <p class="text-gray-500 text-sm mt-4">(Check Market Dashboard for details)</p>
-        </div>
-    </div>
+    <div id="danger-overlay" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center"></div>
 
     <script>
         async function init() {
@@ -71,55 +61,44 @@
             const overlay = document.getElementById('danger-overlay');
             
             try {
-                // 시장 데이터 로드
+                // 캐시 방지용 타임스탬프
                 const mRes = await fetch('market_status.json?t=' + Date.now());
                 const mData = await mRes.json();
 
                 document.getElementById('update-time').innerText = "UPDATED: " + mData.timestamp;
                 document.getElementById('market-regime-text').innerText = mData.regime || "UNKNOWN";
                 document.getElementById('market-message').innerText = mData.message;
-                
                 document.getElementById('spy-value').innerText = `$${mData.spy_price}`;
-                document.getElementById('spy-ma').innerText = `200MA: $${mData.spy_ma}`;
+                document.getElementById('spy-ma').innerText = `MA: $${mData.spy_ma}`;
                 document.getElementById('vix-value').innerText = mData.vix;
 
-                // 상태에 따른 UI 변경
                 if (mData.status === 'DANGER') {
-                    // 위험: 패널 빨간색 + 그리드 잠금
                     marketPanel.className = "mb-10 w-full rounded-xl p-6 flex flex-col md:flex-row justify-between items-center gap-6 shadow-lg status-panel-danger";
                     document.getElementById('market-regime-text').className = "text-3xl font-bold text-red-500 tracking-widest";
                     document.getElementById('vix-value').className = "text-2xl font-bold text-red-500";
-                    
-                    grid.classList.add('blur-lock'); // 흐리게
-                    overlay.classList.remove('hidden'); // 차단막 띄우기 (하지만 투명하게 해서 뒤는 보이게)
-                    overlay.style.background = "transparent"; // 오버레이 배경 투명화 (상단 패널은 보여야 하니까)
-                    overlay.innerHTML = ""; // 중앙 경고창 제거 (상단 패널이 경고 역할 수행)
-                    
-                    // 대신 그리드 쪽에만 경고 문구 추가
-                    grid.innerHTML = `<div class="col-span-full text-center text-red-500 py-20 font-bold text-xl">🚫 INDIVIDUAL TARGETS LOCKED</div>`;
+                    grid.classList.add('blur-lock');
+                    overlay.classList.remove('hidden');
+                    overlay.style.background = "transparent";
+                    grid.innerHTML = `<div class="col-span-full text-center text-red-500 py-20 font-bold text-xl">🚫 MARKET UNSAFE - LOCKED</div>`;
                     return;
-
                 } else {
-                    // 안전: 패널 초록색
                     marketPanel.className = "mb-10 w-full rounded-xl p-6 flex flex-col md:flex-row justify-between items-center gap-6 shadow-lg status-panel-safe";
                     document.getElementById('market-regime-text').className = "text-3xl font-bold text-green-400 tracking-widest";
                     document.getElementById('spy-value').className = "text-2xl font-bold text-green-400";
                 }
 
-                // 종목 리포트 로드
                 const rRes = await fetch('final_v12_report.json?t=' + Date.now());
                 const reports = await rRes.json();
                 grid.innerHTML = '';
 
                 if (reports.length === 0) {
-                    grid.innerHTML = `<div class="col-span-full text-center text-gray-500 py-10">NO TARGETS DETECTED (WAITING FOR OPPORTUNITY)</div>`;
+                    grid.innerHTML = `<div class="col-span-full text-center text-gray-500 py-10">NO TARGETS (SCAN COMPLETE)</div>`;
                     return;
                 }
 
                 reports.forEach((item, index) => {
                     let badge = item.status === 'STRONG' ? 'badge-strong' : (item.status === 'TRAP' ? 'badge-trap' : 'badge-watch');
                     const chartId = `tv_${index}`;
-                    
                     const card = document.createElement('div');
                     card.className = 'card rounded-lg overflow-hidden p-0';
                     card.innerHTML = `
@@ -131,12 +110,9 @@
                             <span class="px-2 py-1 text-xs font-bold rounded ${badge}">${item.status}</span>
                         </div>
                         <div class="h-40 bg-black w-full" id="${chartId}"></div>
-                        <div class="p-4">
-                            <p class="text-sm text-gray-300">${item.reason_kr || "분석 중..."}</p>
-                        </div>
+                        <div class="p-4"><p class="text-sm text-gray-300">${item.reason_kr || "분석 대기 중..."}</p></div>
                     `;
                     grid.appendChild(card);
-                    
                     setTimeout(() => {
                         new TradingView.widget({
                             "container_id": chartId, "width": "100%", "height": "100%",
@@ -145,10 +121,7 @@
                         });
                     }, index * 100);
                 });
-
-            } catch (e) {
-                console.error(e);
-            }
+            } catch (e) { console.error(e); }
         }
         init();
     </script>
