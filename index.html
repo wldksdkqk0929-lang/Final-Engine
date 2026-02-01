@@ -3,140 +3,158 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SNIPER V12: SHADOW HUNTER</title>
+    <title>SNIPER V12.5: SHADOW HUNTER</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
     <style>
         body { font-family: 'JetBrains Mono', monospace; background-color: #0d1117; color: #c9d1d9; }
         .card { background: #161b22; border: 1px solid #30363d; transition: all 0.3s ease; }
-        .card:hover { border-color: #58a6ff; transform: translateY(-2px); box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
         .badge-strong { background: #238636; color: white; }
         .badge-watch { background: #9e6a03; color: white; }
-        .badge-late { background: #da3633; color: white; }
         .badge-trap { background: #30363d; color: #8b949e; }
         
-        /* 로딩 애니메이션 */
-        .loader { border: 3px solid #30363d; border-top: 3px solid #58a6ff; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        /* [핵심] 전시 상황 블러 효과 */
+        .blur-lock { filter: blur(8px); pointer-events: none; opacity: 0.3; }
+        
+        /* [핵심] 경고창 오버레이 */
+        #danger-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 50; background: rgba(13, 17, 23, 0.8);
+            align-items: center; justify-content: center; flex-direction: column;
+        }
     </style>
 </head>
-<body class="p-4 md:p-8">
+<body class="p-4 md:p-8 relative">
 
-    <header class="mb-8 flex justify-between items-center border-b border-gray-700 pb-4">
-        <div>
-            <h1 class="text-3xl font-bold text-blue-400">SNIPER <span class="text-white">V12</span></h1>
-            <p class="text-xs text-gray-500 mt-1">SHADOW HUNTER PROTOCOL ACTIVATED</p>
-        </div>
-        <div class="text-right">
-            <p id="update-time" class="text-xs text-gray-400">WAITING FOR DATA...</p>
-            <div class="flex gap-2 mt-2 justify-end">
-                <span class="px-2 py-1 text-xs rounded bg-green-900 text-green-300">RSI FILTER ON</span>
-                <span class="px-2 py-1 text-xs rounded bg-blue-900 text-blue-300">AI BRAIN V1.5</span>
+    <div id="danger-overlay">
+        <div class="bg-red-900/90 border-2 border-red-500 p-8 rounded-lg text-center max-w-lg shadow-[0_0_50px_rgba(220,38,38,0.5)]">
+            <h1 class="text-4xl font-bold text-white mb-2">⛔ TRADING HALTED</h1>
+            <p class="text-red-200 text-lg mb-6 tracking-widest">MARKET REGIME: DANGER</p>
+            
+            <div class="bg-black/50 p-4 rounded text-left space-y-2 mb-6 border border-red-700">
+                <div class="flex justify-between">
+                    <span class="text-gray-400">REASON:</span>
+                    <span id="danger-reason" class="text-red-400 font-bold">Checking...</span>
+                </div>
+                <div class="flex justify-between text-sm">
+                    <span>SPY LEVEL:</span>
+                    <span id="spy-level" class="text-white">---</span>
+                </div>
+                <div class="flex justify-between text-sm">
+                    <span>VIX LEVEL:</span>
+                    <span id="vix-level" class="text-white">---</span>
+                </div>
             </div>
-        </div>
-    </header>
-
-    <div id="grid-container" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        <div class="col-span-full text-center py-20">
-            <div class="loader mx-auto mb-4"></div>
-            <p class="text-gray-500">Retrieving Intelligence Reports...</p>
+            
+            <p class="text-xs text-red-300">
+                Falling Knife Protection Activated.<br>
+                System is monitoring, but engagement is forbidden.
+            </p>
         </div>
     </div>
 
+    <header class="mb-8 flex justify-between items-center border-b border-gray-700 pb-4">
+        <div>
+            <h1 class="text-3xl font-bold text-blue-400">SNIPER <span class="text-white">V12.5</span></h1>
+            <p class="text-xs text-gray-500 mt-1">SHADOW HUNTER PROTOCOL</p>
+        </div>
+        <div class="text-right">
+            <p id="update-time" class="text-xs text-gray-400">LOADING...</p>
+            <div id="status-badges" class="flex gap-2 mt-2 justify-end">
+                </div>
+        </div>
+    </header>
+
+    <div id="grid-container" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 transition-all duration-500">
+        <div class="col-span-full text-center py-20 text-gray-500">Connecting to HQ...</div>
+    </div>
+
     <script>
-        async function loadData() {
+        async function initDashboard() {
+            const container = document.getElementById('grid-container');
+            const overlay = document.getElementById('danger-overlay');
+            const timeDisplay = document.getElementById('update-time');
+            
             try {
-                // 캐시 방지용 타임스탬프 추가
-                const response = await fetch('final_v12_report.json?t=' + new Date().getTime());
-                if (!response.ok) throw new Error("Report file not found");
+                // 1. 시장 상태 확인 (STEP 0)
+                const marketRes = await fetch('market_status.json?t=' + Date.now());
+                const marketData = await marketRes.json();
                 
-                const data = await response.json();
-                const container = document.getElementById('grid-container');
-                container.innerHTML = ''; // 로딩 삭제
+                timeDisplay.innerText = "LAST UPDATE: " + marketData.timestamp;
 
-                // 업데이트 시간 표시
-                document.getElementById('update-time').innerText = "LAST UPDATE: " + new Date().toLocaleString();
+                // [핵심] 시장 위험 판정
+                if (marketData.status === 'DANGER') {
+                    // 1-A. 적색 경보 발령
+                    overlay.style.display = 'flex'; // 경고창 노출
+                    container.classList.add('blur-lock'); // 배경 블러 처리
+                    
+                    // 증거 데이터 입력
+                    document.getElementById('danger-reason').innerText = marketData.message;
+                    document.getElementById('spy-level').innerText = `$${marketData.spy_price} (MA: $${marketData.spy_ma})`;
+                    document.getElementById('vix-level').innerText = marketData.vix;
+                    
+                    // 헤더 뱃지 변경
+                    document.getElementById('status-badges').innerHTML = 
+                        `<span class="px-2 py-1 text-xs rounded bg-red-900 text-red-200 animate-pulse">DEFCON 1</span>`;
+                        
+                    // 여기서 종료 (종목 로드 안함)
+                    return; 
+                } else {
+                    // 1-B. 정상 상황
+                    document.getElementById('status-badges').innerHTML = 
+                        `<span class="px-2 py-1 text-xs rounded bg-green-900 text-green-300">MARKET SAFE</span>
+                         <span class="px-2 py-1 text-xs rounded bg-blue-900 text-blue-300">AI ACTIVE</span>`;
+                }
 
-                if (data.length === 0) {
-                    container.innerHTML = `<div class="col-span-full text-center text-gray-500 py-10">NO TARGETS SURVIVED THE FILTER. (MARKET IS BORING)</div>`;
+                // 2. 종목 리포트 로드 (STEP 1~3)
+                const reportRes = await fetch('final_v12_report.json?t=' + Date.now());
+                const reports = await reportRes.json();
+                container.innerHTML = '';
+
+                if (reports.length === 0) {
+                    container.innerHTML = `<div class="col-span-full text-center text-gray-600 py-10">NO TARGETS FOUND (SCANNING...)</div>`;
                     return;
                 }
 
-                data.forEach((item, index) => {
-                    // 뱃지 색상 결정
-                    let badgeClass = 'badge-watch';
-                    if (item.status === 'STRONG') badgeClass = 'badge-strong';
-                    if (item.status === 'LATE') badgeClass = 'badge-late';
-                    if (item.status === 'TRAP') badgeClass = 'badge-trap';
-
-                    // 카드 HTML 생성
+                reports.forEach((item, index) => {
+                    let badge = item.status === 'STRONG' ? 'badge-strong' : (item.status === 'TRAP' ? 'badge-trap' : 'badge-watch');
+                    const chartId = `tv_${index}`;
+                    
                     const card = document.createElement('div');
                     card.className = 'card rounded-lg overflow-hidden p-0';
-                    
-                    // 차트 컨테이너 ID 생성
-                    const chartId = `tv_chart_${index}`;
-
                     card.innerHTML = `
                         <div class="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-900">
                             <div>
-                                <h2 class="text-2xl font-bold text-white tracking-wider">${item.symbol}</h2>
-                                <p class="text-xs text-gray-400">DROP: <span class="text-red-400">${item.drawdown}%</span> | VOL: <span class="text-yellow-400">${item.vol_ratio}%</span></p>
+                                <h2 class="text-2xl font-bold text-white">${item.symbol}</h2>
+                                <p class="text-xs text-gray-400">DROP: <span class="text-red-400">${item.drawdown}%</span></p>
                             </div>
-                            <span class="px-3 py-1 text-sm font-bold rounded ${badgeClass}">${item.status}</span>
+                            <span class="px-3 py-1 text-sm font-bold rounded ${badge}">${item.status}</span>
                         </div>
-                        
                         <div class="h-40 bg-black w-full" id="${chartId}"></div>
-
                         <div class="p-4">
-                            <div class="flex justify-between text-xs text-gray-500 mb-2">
-                                <span>AI RISK: ${item.risk_level}</span>
-                                <span>MODEL: Gemini-Pro</span>
-                            </div>
-                            <p class="text-sm text-gray-300 leading-relaxed border-l-2 border-blue-500 pl-3">
-                                ${item.reason_kr || "분석 대기 중..."}
-                            </p>
+                            <p class="text-sm text-gray-300 border-l-2 border-blue-500 pl-3">${item.reason_kr || "분석 중..."}</p>
                         </div>
                     `;
-                    
                     container.appendChild(card);
-
-                    // 트레이딩뷰 차트 위젯 생성 (비동기 딜레이)
+                    
                     setTimeout(() => {
                         new TradingView.widget({
-                            "container_id": chartId,
-                            "width": "100%",
-                            "height": "100%",
-                            "symbol": item.symbol,
-                            "interval": "D",
-                            "timezone": "Etc/UTC",
-                            "theme": "dark",
-                            "style": "1",
-                            "locale": "kr",
-                            "toolbar_bg": "#f1f3f6",
-                            "enable_publishing": false,
-                            "hide_top_toolbar": true,
-                            "hide_side_toolbar": true,
-                            "allow_symbol_change": false,
-                            "save_image": false,
-                            "details": false,
-                            "hotlist": false,
-                            "calendar": false
+                            "container_id": chartId, "width": "100%", "height": "100%",
+                            "symbol": item.symbol, "interval": "D", "theme": "dark",
+                            "style": "1", "locale": "kr", "hide_top_toolbar": true,
+                            "hide_side_toolbar": true, "allow_symbol_change": false, "save_image": false
                         });
-                    }, index * 100); // 순차 로딩
+                    }, index * 100);
                 });
 
-            } catch (error) {
-                console.error(error);
-                document.getElementById('grid-container').innerHTML = `
-                    <div class="col-span-full text-center text-red-500 py-10">
-                        ⚠️ FAILED TO LOAD DATA.<br>
-                        <span class="text-xs text-gray-600">Run 'inspector.py' first to generate report.</span>
-                    </div>`;
+            } catch (e) {
+                console.error(e);
+                container.innerHTML = `<div class="col-span-full text-center text-red-500 py-10">SYSTEM ERROR: RETRYING...</div>`;
             }
         }
 
-        loadData();
+        initDashboard();
     </script>
 </body>
 </html>
