@@ -1,0 +1,240 @@
+[
+    {
+        "symbol": "AAPL",
+        "tech_data": {
+            "symbol": "AAPL",
+            "status": "VOL_SPIKE",
+            "drawdown": -10.1,
+            "rsi": 50.2,
+            "vol_ratio": 185.0
+        },
+        "ai_analysis": {
+            "action": "WATCH",
+            "risk_level": "HIGH",
+            "korean_summary": "미국 법무부의 반독점 소송과 중국 수요 둔화 우려로 하락했으나, 향후 공개될 AI 전략이 반등의 계기가 될 수 있습니다.",
+            "buying_catalyst": "AI Strategy"
+        },
+        "last_updated": "2026-02-01 01:20"
+    },
+    {
+        "symbol": "MSFT",
+        "tech_data": {
+            "symbol": "MSFT",
+            "status": "OVERSOLD",
+            "drawdown": -22.26,
+            "rsi": 31.2,
+            "vol_ratio": 178.0
+        },
+        "ai_analysis": {
+            "action": "WATCH",
+            "risk_level": "LOW",
+            "korean_summary": "MSFT는 시장 전반의 조정으로 기술적 과매도 상태에 진입했으나, AI 및 클라우드 부문의 강력한 성장성을 기반으로 반등 가능성이 있습니다.",
+            "buying_catalyst": "Strong AI/Cloud Growth"
+        },
+        "last_updated": "2026-02-01 01:20"
+    },
+    {
+        "symbol": "AMZN",
+        "tech_data": {
+            "symbol": "AMZN",
+            "status": "OVERSOLD",
+            "drawdown": -7.46,
+            "rsi": 40.3,
+            "vol_ratio": 111.0
+        },
+        "ai_analysis": {
+            "action": "WATCH",
+            "risk_level": "LOW",
+            "korean_summary": "최근 상승에 따른 기술적 조정으로 주가가 하락했으며, 견고한 펀더멘털을 기반으로 기술적 반등을 기대해볼 수 있습니다.",
+            "buying_catalyst": "Technical Rebound"
+        },
+        "last_updated": "2026-02-01 01:20"
+    },
+    {
+        "symbol": "TSLA",
+        "tech_data": {
+            "symbol": "TSLA",
+            "status": "OVERSOLD",
+            "drawdown": -13.72,
+            "rsi": 43.5,
+            "vol_ratio": 131.0
+        },
+        "ai_analysis": {
+            "action": "WATCH",
+            "risk_level": "HIGH",
+            "korean_summary": "TSLA는 최근 실적 부진 및 경쟁 심화로 하락했으나, 저가형 신차 및 로보택시에 대한 미래 기대감으로 반등을 모색하고 있습니다.",
+            "buying_catalyst": "Robotaxi / AI"
+        },
+        "last_updated": "2026-02-01 01:21"
+    },
+    {
+        "symbol": "META",
+        "tech_data": {
+            "symbol": "META",
+            "status": "VOL_SPIKE",
+            "drawdown": -9.88,
+            "rsi": 64.2,
+            "vol_ratio": 132.0
+        },
+        "ai_analysis": {
+            "action": "WATCH",
+            "risk_level": "LOW",
+            "korean_summary": "최근 주가 하락은 높은 AI 투자 비용 우려 때문이지만, 강력한 AI 모멘텀이 반등의 계기가 될 수 있습니다.",
+            "buying_catalyst": "AI Momentum"
+        },
+        "last_updated": "2026-02-01 01:21"
+    },
+    {
+        "symbol": "PLTR",
+        "tech_data": {
+            "symbol": "PLTR",
+            "status": "OVERSOLD",
+            "drawdown": -29.36,
+            "rsi": 14.3,
+            "vol_ratio": 120.0
+        },
+        "ai_analysis": {
+            "action": "WATCH",
+            "risk_level": "HIGH",
+            "korean_summary": "팔란티어는 실적 발표 후 성장성 우려로 급락했으나, RSI 14의 기술적 과매도 상태로 반등 가능성이 있습니다.",
+            "buying_catalyst": "None"
+        },
+        "last_updated": "2026-02-01 01:21"
+    },
+    {
+        "symbol": "SOFI",
+        "tech_data": {
+            "symbol": "SOFI",
+            "status": "OVERSOLD",
+            "drawdown": -30.31,
+            "rsi": 16.6,
+            "vol_ratio": 260.0
+        },
+        "ai_analysis": {
+            "action": "WATCH",
+            "risk_level": "HIGH",
+            "korean_summary": "소파이는 약화된 실적 가이던스로 인해 주가가 급락했으나, CEO의 자사주 매입과 기술적 과매도 상태로 인해 반등 가능성이 있습니다.",
+            "buying_catalyst": "Insider Buy"
+        },
+        "last_updated": "2026-02-01 01:22"
+    },
+    {
+        "symbol": "PYPL",
+        "tech_data": {
+            "symbol": "PYPL",
+            "status": "OVERSOLD",
+            "drawdown": -33.33,
+            "rsi": 28.6,
+            "vol_ratio": 120.0
+        },
+        "ai_analysis": {
+            "action": "WATCH",
+            "risk_level": "HIGH",
+            "korean_summary": "페이팔은 경쟁 심화 및 성장 둔화 우려로 주가가 하락했으나, 기술적 과매도 상태와 상향된 실적 가이던스로 인해 반등 가능성을 지켜볼 필요가 있다.",
+            "buying_catalyst": "Earnings Beat"
+        },
+        "last_updated": "2026-02-01 01:22"
+    },
+    {
+        "symbol": "NFLX",
+        "tech_data": {
+            "symbol": "NFLX",
+            "status": "OVERSOLD",
+            "drawdown": -34.11,
+            "rsi": 28.1,
+            "vol_ratio": 87.0
+        },
+        "ai_analysis": {
+            "action": "WATCH",
+            "risk_level": "HIGH",
+            "korean_summary": "넷플릭스는 가입자 성장 둔화 우려로 급락했으나, 기술적 과매도 상태에 따른 단기 반등 가능성이 있습니다.",
+            "buying_catalyst": "None"
+        },
+        "last_updated": "2026-02-01 01:22"
+    },
+    {
+        "symbol": "COIN",
+        "tech_data": {
+            "symbol": "COIN",
+            "status": "OVERSOLD",
+            "drawdown": -51.58,
+            "rsi": 21.2,
+            "vol_ratio": 104.0
+        },
+        "ai_analysis": {
+            "action": "DISCARD",
+            "risk_level": "HIGH",
+            "korean_summary": "암호화폐 시장 전반의 하락과 SEC 소송 등 규제 불확실성으로 인해 주가가 급락했으며, 시장 회복 없이는 반등이 어렵습니다.",
+            "buying_catalyst": "None"
+        },
+        "last_updated": "2026-02-01 01:22"
+    },
+    {
+        "symbol": "MARA",
+        "tech_data": {
+            "symbol": "MARA",
+            "status": "OVERSOLD",
+            "drawdown": -59.49,
+            "rsi": 43.8,
+            "vol_ratio": 90.0
+        },
+        "ai_analysis": {
+            "action": "DISCARD",
+            "risk_level": "HIGH",
+            "korean_summary": "비트코인 가격 하락으로 인해 주가가 크게 조정받았으며, 반등은 전적으로 비트코인 시세 회복에 달려있습니다.",
+            "buying_catalyst": "Bitcoin Rebound"
+        },
+        "last_updated": "2026-02-01 01:23"
+    },
+    {
+        "symbol": "DKNG",
+        "tech_data": {
+            "symbol": "DKNG",
+            "status": "OVERSOLD",
+            "drawdown": -43.6,
+            "rsi": 17.5,
+            "vol_ratio": 200.0
+        },
+        "ai_analysis": {
+            "action": "WATCH",
+            "risk_level": "HIGH",
+            "korean_summary": "고성장주에 대한 시장의 위험 회피 심리로 주가가 하락했으나, 내부자 매수와 기술적 과매도 상태로 반등 가능성이 존재합니다.",
+            "buying_catalyst": "Insider Buy"
+        },
+        "last_updated": "2026-02-01 01:23"
+    },
+    {
+        "symbol": "HOOD",
+        "tech_data": {
+            "symbol": "HOOD",
+            "status": "OVERSOLD",
+            "drawdown": -35.34,
+            "rsi": 22.0,
+            "vol_ratio": 111.0
+        },
+        "ai_analysis": {
+            "action": "DISCARD",
+            "risk_level": "HIGH",
+            "korean_summary": "SEC의 암호화폐 사업부에 대한 법적 조치 가능성이라는 큰 악재가 기술적 과매도 상태와 양호한 실적을 압도하고 있어 위험이 높습니다.",
+            "buying_catalyst": "Strong Earnings"
+        },
+        "last_updated": "2026-02-01 01:23"
+    },
+    {
+        "symbol": "RIVN",
+        "tech_data": {
+            "symbol": "RIVN",
+            "status": "OVERSOLD",
+            "drawdown": -34.99,
+            "rsi": 6.1,
+            "vol_ratio": 86.0
+        },
+        "ai_analysis": {
+            "action": "WATCH",
+            "risk_level": "HIGH",
+            "korean_summary": "지속적인 현금 소진 우려로 주가가 하락했으나, 폭스바겐의 대규모 투자 및 합작사 설립 발표가 강력한 반등 촉매제로 작용할 전망입니다.",
+            "buying_catalyst": "VW Partnership/Investment"
+        },
+        "last_updated": "2026-02-01 01:24"
+    }
+]
