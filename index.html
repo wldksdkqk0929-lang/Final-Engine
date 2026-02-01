@@ -14,8 +14,6 @@
         .badge-watch { background: #9e6a03; color: white; }
         .badge-trap { background: #30363d; color: #8b949e; }
         .blur-lock { filter: blur(8px); pointer-events: none; opacity: 0.3; }
-        
-        /* 헤더 HUD 스타일 */
         .hud-value { font-weight: bold; color: #e5e7eb; }
         .hud-label { font-size: 0.7rem; color: #6b7280; margin-right: 4px; }
         .hud-box { background: #1f2937; padding: 4px 12px; rounded: 4px; border: 1px solid #374151; display: flex; align-items: center; }
@@ -24,26 +22,22 @@
 <body class="p-4 md:p-8 max-w-7xl mx-auto">
 
     <header class="mb-8 flex flex-col md:flex-row justify-between items-center border-b border-gray-700 pb-4 gap-4">
-        
         <div class="flex items-center gap-4">
             <div>
                 <h1 class="text-2xl font-bold text-blue-400">SNIPER <span class="text-white">V13.2</span></h1>
                 <p id="market-status-text" class="text-xs text-green-500 font-bold tracking-widest">SYSTEM ONLINE</p>
             </div>
         </div>
-
         <div class="flex gap-3">
             <div class="hud-box rounded-lg">
                 <span class="hud-label">SPY</span>
                 <span id="spy-value" class="hud-value text-blue-300">---</span>
                 <span id="spy-ma" class="text-[10px] text-gray-500 ml-2">MA:---</span>
             </div>
-
             <div class="hud-box rounded-lg">
                 <span class="hud-label">VIX</span>
                 <span id="vix-value" class="hud-value text-yellow-300">---</span>
             </div>
-            
             <div class="text-right ml-2 hidden md:block">
                 <p id="update-time" class="text-[10px] text-gray-500 mt-1">...</p>
             </div>
@@ -63,9 +57,10 @@
         async function init() {
             const grid = document.getElementById('grid-container');
             const overlay = document.getElementById('danger-overlay');
+            const statusText = document.getElementById('market-status-text');
             
             try {
-                // 시장 데이터 로드 (HUD 채우기)
+                // 시장 데이터 (캐시 방지)
                 const mRes = await fetch('market_status.json?t=' + Date.now());
                 const mData = await mRes.json();
 
@@ -74,34 +69,26 @@
                 document.getElementById('spy-ma').innerText = `(${mData.spy_ma})`;
                 document.getElementById('vix-value').innerText = mData.vix;
 
-                // [핵심] 시장 상태에 따른 색상 변경
-                const statusText = document.getElementById('market-status-text');
-                
                 if (mData.status === 'DANGER') {
-                    // 위험: 빨간색 + 잠금
                     statusText.innerText = "⚠️ " + mData.message;
                     statusText.className = "text-xs text-red-500 font-bold tracking-widest animate-pulse";
-                    
                     document.getElementById('vix-value').className = "hud-value text-red-500";
-                    
                     grid.classList.add('blur-lock');
                     overlay.classList.remove('hidden');
                     document.getElementById('lock-reason').innerText = mData.message;
                     return; 
-
                 } else {
-                    // 안전: 초록색
                     statusText.innerText = "✅ " + mData.regime;
                     statusText.className = "text-xs text-green-500 font-bold tracking-widest";
                 }
 
-                // 종목 리포트 로드
+                // 종목 데이터 (캐시 방지)
                 const rRes = await fetch('final_v12_report.json?t=' + Date.now());
                 const reports = await rRes.json();
                 grid.innerHTML = '';
 
                 if (reports.length === 0) {
-                    grid.innerHTML = `<div class="col-span-full text-center text-gray-500 py-10">NO TARGETS (SCAN COMPLETE)</div>`;
+                    grid.innerHTML = `<div class="col-span-full text-center text-gray-500 py-10">NO TARGETS</div>`;
                     return;
                 }
 
