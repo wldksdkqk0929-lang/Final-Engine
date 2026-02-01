@@ -1,1 +1,9 @@
 ========== [Step 1] 배포 패키징 ==========
+[main 6dea5cf] Update: Sniper V13.2 HUD & Engine Data
+ 3 files changed, 132 insertions(+), 33 deletions(-)
+========== [Step 2] 전 세계 송출 (Git Push) ==========
+To https://github.com/wldksdkqk0929-lang/Final-Engine
+   e4fd657..6dea5cf  main -> main
+========== [Step 3] 배포 완료 확인 ==========
+>>> 배포가 완료되었습니다.
+>>> 깃허브 사이트는 반영까지 약 1~2분 정도 걸립니다.
