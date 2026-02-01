@@ -1,9 +1,6 @@
 {
-    "status": "SAFE",
-    "message": "Market is Healthy",
-    "regime": "BULL MARKET",
-    "spy_price": 691.97,
-    "spy_ma": 638.2,
-    "vix": 17.44,
-    "timestamp": "2026-02-01 02:43:53"
+    "status": "DANGER",
+    "spy_price": 390.50,
+    "vix": 50.00,
+    "targets": []
 }
