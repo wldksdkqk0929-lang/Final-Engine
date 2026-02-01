@@ -60,7 +60,7 @@
             const statusText = document.getElementById('market-status-text');
             
             try {
-                // 시장 데이터 (캐시 방지)
+                // 시장 데이터 (캐시 방지 타임스탬프 필수)
                 const mRes = await fetch('market_status.json?t=' + Date.now());
                 const mData = await mRes.json();
 
@@ -82,7 +82,6 @@
                     statusText.className = "text-xs text-green-500 font-bold tracking-widest";
                 }
 
-                // 종목 데이터 (캐시 방지)
                 const rRes = await fetch('final_v12_report.json?t=' + Date.now());
                 const reports = await rRes.json();
                 grid.innerHTML = '';
