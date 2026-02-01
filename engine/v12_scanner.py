@@ -1,9 +1,9 @@
 import yfinance as yf
 import pandas as pd
-import numpy as np
-import time
+import json
+import sys
 
-# 감시 대상 (테스트용 우량주 + 변동성 종목 혼합)
+# 감시 대상 (정식 리스트)
 TARGETS = [
     "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META", 
     "AMD", "INTC", "PLTR", "SOFI", "PYPL", "NFLX", "COIN",
@@ -12,7 +12,56 @@ TARGETS = [
 
 class MarketScanner:
     def __init__(self):
-        print(f"📡 Radar Activated. Scanning {len(TARGETS)} targets...")
+        print("📡 Radar Activated (Real Mode).")
+
+    def check_and_report_market(self):
+        print("\n🛡️ [STEP 0] Checking Market Regime (REAL)...")
+        status_report = {
+            "status": "SAFE",
+            "message": "Market is Healthy",
+            "regime": "BULL MARKET", 
+            "spy_price": 0, "spy_ma": 0, "vix": 0,
+            "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+
+        try:
+            market_data = yf.download(["SPY", "^VIX"], period="1y", interval="1d", progress=False)
+            
+            spy_close = market_data["Close"]["SPY"]
+            spy_200ma = spy_close.rolling(window=200).mean().iloc[-1]
+            spy_current = spy_close.iloc[-1]
+            vix_current = market_data["Close"]["^VIX"].iloc[-1]
+            
+            status_report["spy_price"] = round(spy_current, 2)
+            status_report["spy_ma"] = round(spy_200ma, 2)
+            status_report["vix"] = round(vix_current, 2)
+
+            # 판정 로직 (정상 기준)
+            reasons = []
+            if spy_current < spy_200ma:
+                reasons.append("SPY Broken")
+                status_report["regime"] = "BEAR MARKET"
+            
+            if vix_current > 35:
+                reasons.append("Panic VIX")
+                status_report["regime"] = "PANIC"
+
+            if reasons:
+                status_report["status"] = "DANGER"
+                status_report["message"] = " & ".join(reasons)
+                print(f"   ⛔ MARKET DANGER: {status_report['message']}")
+            else:
+                print("   ✅ MARKET GREEN")
+
+        except Exception as e:
+            print(f"Error: {e}")
+            status_report["status"] = "DANGER" # 데이터 없으면 위험으로 간주
+            status_report["message"] = "Data Check Failed"
+
+        with open("market_status.json", "w") as f:
+            json.dump(status_report, f, indent=4)
+            
+        return status_report["status"] == "SAFE"
 
     def calculate_rsi(self, series, period=14):
         delta = series.diff(1)
@@ -22,83 +71,52 @@ class MarketScanner:
         return 100 - (100 / (1 + rs))
 
     def scan(self):
-        candidates = []
+        # 시장 확인
+        is_safe = self.check_and_report_market()
         
-        # 데이터 일괄 다운로드 (속도 최적화)
+        candidates = []
+        if not is_safe:
+            # 시장 위험 시 스캔 중단 (빈 리스트 저장)
+            with open("targets.json", "w") as f: json.dump([], f)
+            return []
+
+        # 개별 종목 스캔
+        print(f"\n📡 [STEP 1] Scanning Targets...")
         data = yf.download(TARGETS, period="6mo", interval="1d", progress=False)
         
-        print(f"📊 Data Acquired. Analyzing patterns...\n")
-        print(f"{'SYMBOL':<8} | {'DROP(%)':<8} | {'RSI':<6} | {'VOL(%)':<8} | {'STATUS'}")
-        print("-" * 55)
-
         for symbol in TARGETS:
             try:
-                # 데이터 추출
-                if len(TARGETS) == 1:
-                    df = data
-                else:
-                    df = data.xs(symbol, axis=1, level=1) if isinstance(data.columns, pd.MultiIndex) else data
-
-                # 데이터 부족 시 스킵
+                if len(TARGETS) == 1: df = data
+                else: df = data.xs(symbol, axis=1, level=1) if isinstance(data.columns, pd.MultiIndex) else data
+                
                 if len(df) < 20: continue
 
-                # 1. 현재가 및 고점 대비 하락률 (Deep Dive Check)
-                current_price = df['Close'].iloc[-1]
-                high_52 = df['High'].max()
-                drawdown = ((current_price - high_52) / high_52) * 100
-
-                # 2. RSI 계산 (Oversold Check)
-                rsi_series = self.calculate_rsi(df['Close'])
-                rsi = rsi_series.iloc[-1]
-
-                # 3. 거래량 급증 (Volume Spike Check)
-                avg_vol = df['Volume'].iloc[-20:-1].mean() # 최근 20일 평균 (오늘 제외)
-                today_vol = df['Volume'].iloc[-1]
+                current = df['Close'].iloc[-1]
+                high = df['High'].max()
+                drawdown = ((current - high) / high) * 100
+                rsi = self.calculate_rsi(df['Close']).iloc[-1]
                 
-                if avg_vol == 0: continue
-                vol_ratio = (today_vol / avg_vol) * 100
+                vol_avg = df['Volume'].iloc[-20:-1].mean()
+                vol_now = df['Volume'].iloc[-1]
+                vol_ratio = (vol_now / vol_avg * 100) if vol_avg > 0 else 0
 
-                # --- 🎯 [V12 필터링 로직] ---
-                # 조건: 고점대비 -10% 이상 하락 AND (RSI < 45 OR 거래량 120% 폭발)
-                # (테스트를 위해 조건을 조금 넓게 잡았습니다)
                 is_target = False
                 status = "PASS"
+                if drawdown < -5.0:
+                    if rsi < 45: is_target = True; status = "OVERSOLD"
+                    elif vol_ratio > 120: is_target = True; status = "VOL_SPIKE"
                 
-                if drawdown < -5.0: # 최소 5%는 빠져야 쳐다봄
-                    if rsi < 45: # 과매도권 진입
-                        is_target = True
-                        status = "OVERSOLD"
-                    elif vol_ratio > 120: # 바닥권 거래량 터짐
-                        is_target = True
-                        status = "VOL_SPIKE"
-                
-                # 결과 출력
                 if is_target:
-                    print(f"🎯 {symbol:<6} | {drawdown:>6.2f}%  | {rsi:>5.1f}  | {vol_ratio:>6.0f}%  | {status}")
+                    print(f"   🎯 {symbol}: Drop {drawdown:.1f}%")
                     candidates.append({
-                        "symbol": symbol,
-                        "status": status,
-                        "drawdown": round(drawdown, 2),
-                        "rsi": round(rsi, 1),
-                        "vol_ratio": round(vol_ratio, 0)
+                        "symbol": symbol, "status": status, 
+                        "drawdown": round(drawdown, 2), "rsi": round(rsi, 1), "vol_ratio": round(vol_ratio, 0)
                     })
-                else:
-                    # 탈락한 애들은 흐리게 출력 (로그 확인용)
-                    pass 
+            except: continue
 
-            except Exception as e:
-                # 데이터 에러나면 무시
-                continue
-
-        print("-" * 55)
-        print(f"✅ Scan Complete. {len(candidates)} candidates identified.")
+        with open("targets.json", "w") as f:
+            json.dump(candidates, f, indent=4)
         return candidates
 
 if __name__ == "__main__":
-    scanner = MarketScanner()
-    results = scanner.scan()
-    
-    # 결과를 파일로 저장 (Inspector가 읽을 수 있게)
-    import json
-    with open("targets.json", "w") as f:
-        json.dump(results, f, indent=4)
+    MarketScanner().scan()

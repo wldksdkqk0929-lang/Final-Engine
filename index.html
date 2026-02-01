@@ -3,117 +3,116 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SNIPER V12.5: SHADOW HUNTER</title>
+    <title>SNIPER V13: COMMAND CENTER</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
     <style>
         body { font-family: 'JetBrains Mono', monospace; background-color: #0d1117; color: #c9d1d9; }
-        .card { background: #161b22; border: 1px solid #30363d; transition: all 0.3s ease; }
+        .card { background: #161b22; border: 1px solid #30363d; }
         .badge-strong { background: #238636; color: white; }
         .badge-watch { background: #9e6a03; color: white; }
         .badge-trap { background: #30363d; color: #8b949e; }
-        
-        /* [핵심] 전시 상황 블러 효과 */
         .blur-lock { filter: blur(8px); pointer-events: none; opacity: 0.3; }
         
-        /* [핵심] 경고창 오버레이 */
-        #danger-overlay {
-            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            z-index: 50; background: rgba(13, 17, 23, 0.8);
-            align-items: center; justify-content: center; flex-direction: column;
-        }
+        /* 시장 상태 패널 스타일 */
+        .status-panel-safe { border-left: 5px solid #238636; background: linear-gradient(90deg, #0d1117 0%, #061c0b 100%); }
+        .status-panel-danger { border-left: 5px solid #da3633; background: linear-gradient(90deg, #0d1117 0%, #290808 100%); }
     </style>
 </head>
-<body class="p-4 md:p-8 relative">
+<body class="p-4 md:p-8 max-w-7xl mx-auto">
 
-    <div id="danger-overlay">
-        <div class="bg-red-900/90 border-2 border-red-500 p-8 rounded-lg text-center max-w-lg shadow-[0_0_50px_rgba(220,38,38,0.5)]">
-            <h1 class="text-4xl font-bold text-white mb-2">⛔ TRADING HALTED</h1>
-            <p class="text-red-200 text-lg mb-6 tracking-widest">MARKET REGIME: DANGER</p>
-            
-            <div class="bg-black/50 p-4 rounded text-left space-y-2 mb-6 border border-red-700">
-                <div class="flex justify-between">
-                    <span class="text-gray-400">REASON:</span>
-                    <span id="danger-reason" class="text-red-400 font-bold">Checking...</span>
-                </div>
-                <div class="flex justify-between text-sm">
-                    <span>SPY LEVEL:</span>
-                    <span id="spy-level" class="text-white">---</span>
-                </div>
-                <div class="flex justify-between text-sm">
-                    <span>VIX LEVEL:</span>
-                    <span id="vix-level" class="text-white">---</span>
-                </div>
-            </div>
-            
-            <p class="text-xs text-red-300">
-                Falling Knife Protection Activated.<br>
-                System is monitoring, but engagement is forbidden.
-            </p>
-        </div>
-    </div>
-
-    <header class="mb-8 flex justify-between items-center border-b border-gray-700 pb-4">
+    <header class="mb-6 flex justify-between items-end border-b border-gray-700 pb-4">
         <div>
-            <h1 class="text-3xl font-bold text-blue-400">SNIPER <span class="text-white">V12.5</span></h1>
-            <p class="text-xs text-gray-500 mt-1">SHADOW HUNTER PROTOCOL</p>
+            <h1 class="text-3xl font-bold text-blue-400">SNIPER <span class="text-white">V13</span></h1>
+            <p class="text-xs text-gray-500">COMMAND CENTER</p>
         </div>
         <div class="text-right">
-            <p id="update-time" class="text-xs text-gray-400">LOADING...</p>
-            <div id="status-badges" class="flex gap-2 mt-2 justify-end">
-                </div>
+            <p id="update-time" class="text-xs text-gray-400">CONNECTING...</p>
         </div>
     </header>
 
-    <div id="grid-container" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 transition-all duration-500">
-        <div class="col-span-full text-center py-20 text-gray-500">Connecting to HQ...</div>
+    <section id="market-dashboard" class="mb-10 w-full rounded-xl border border-gray-700 p-6 flex flex-col md:flex-row justify-between items-center gap-6 shadow-lg transition-all">
+        <div class="text-center md:text-left">
+            <h2 class="text-sm text-gray-400 mb-1">MARKET REGIME</h2>
+            <div id="market-regime-text" class="text-3xl font-bold text-white tracking-widest">LOADING...</div>
+            <p id="market-message" class="text-xs text-gray-500 mt-2">Checking Vital Signs...</p>
+        </div>
+        
+        <div class="flex gap-8 text-center">
+            <div>
+                <p class="text-xs text-gray-400">SPY (TREND)</p>
+                <p id="spy-value" class="text-2xl font-bold text-white">---</p>
+                <p id="spy-ma" class="text-[10px] text-gray-500">MA: ---</p>
+            </div>
+            <div>
+                <p class="text-xs text-gray-400">VIX (FEAR)</p>
+                <p id="vix-value" class="text-2xl font-bold text-white">---</p>
+                <p class="text-[10px] text-gray-500">LIMIT: 35.0</p>
+            </div>
+        </div>
+    </section>
+
+    <div id="grid-container" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        </div>
+
+    <div id="danger-overlay" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center">
+        <div class="text-center border-2 border-red-600 p-10 rounded bg-gray-900">
+            <h1 class="text-4xl text-red-500 font-bold mb-4">⛔ TRADING HALTED</h1>
+            <p class="text-gray-300">System locked by Commander Protocol.</p>
+            <p class="text-gray-500 text-sm mt-4">(Check Market Dashboard for details)</p>
+        </div>
     </div>
 
     <script>
-        async function initDashboard() {
-            const container = document.getElementById('grid-container');
+        async function init() {
+            const marketPanel = document.getElementById('market-dashboard');
+            const grid = document.getElementById('grid-container');
             const overlay = document.getElementById('danger-overlay');
-            const timeDisplay = document.getElementById('update-time');
             
             try {
-                // 1. 시장 상태 확인 (STEP 0)
-                const marketRes = await fetch('market_status.json?t=' + Date.now());
-                const marketData = await marketRes.json();
-                
-                timeDisplay.innerText = "LAST UPDATE: " + marketData.timestamp;
+                // 시장 데이터 로드
+                const mRes = await fetch('market_status.json?t=' + Date.now());
+                const mData = await mRes.json();
 
-                // [핵심] 시장 위험 판정
-                if (marketData.status === 'DANGER') {
-                    // 1-A. 적색 경보 발령
-                    overlay.style.display = 'flex'; // 경고창 노출
-                    container.classList.add('blur-lock'); // 배경 블러 처리
+                document.getElementById('update-time').innerText = "UPDATED: " + mData.timestamp;
+                document.getElementById('market-regime-text').innerText = mData.regime || "UNKNOWN";
+                document.getElementById('market-message').innerText = mData.message;
+                
+                document.getElementById('spy-value').innerText = `$${mData.spy_price}`;
+                document.getElementById('spy-ma').innerText = `200MA: $${mData.spy_ma}`;
+                document.getElementById('vix-value').innerText = mData.vix;
+
+                // 상태에 따른 UI 변경
+                if (mData.status === 'DANGER') {
+                    // 위험: 패널 빨간색 + 그리드 잠금
+                    marketPanel.className = "mb-10 w-full rounded-xl p-6 flex flex-col md:flex-row justify-between items-center gap-6 shadow-lg status-panel-danger";
+                    document.getElementById('market-regime-text').className = "text-3xl font-bold text-red-500 tracking-widest";
+                    document.getElementById('vix-value').className = "text-2xl font-bold text-red-500";
                     
-                    // 증거 데이터 입력
-                    document.getElementById('danger-reason').innerText = marketData.message;
-                    document.getElementById('spy-level').innerText = `$${marketData.spy_price} (MA: $${marketData.spy_ma})`;
-                    document.getElementById('vix-level').innerText = marketData.vix;
+                    grid.classList.add('blur-lock'); // 흐리게
+                    overlay.classList.remove('hidden'); // 차단막 띄우기 (하지만 투명하게 해서 뒤는 보이게)
+                    overlay.style.background = "transparent"; // 오버레이 배경 투명화 (상단 패널은 보여야 하니까)
+                    overlay.innerHTML = ""; // 중앙 경고창 제거 (상단 패널이 경고 역할 수행)
                     
-                    // 헤더 뱃지 변경
-                    document.getElementById('status-badges').innerHTML = 
-                        `<span class="px-2 py-1 text-xs rounded bg-red-900 text-red-200 animate-pulse">DEFCON 1</span>`;
-                        
-                    // 여기서 종료 (종목 로드 안함)
-                    return; 
+                    // 대신 그리드 쪽에만 경고 문구 추가
+                    grid.innerHTML = `<div class="col-span-full text-center text-red-500 py-20 font-bold text-xl">🚫 INDIVIDUAL TARGETS LOCKED</div>`;
+                    return;
+
                 } else {
-                    // 1-B. 정상 상황
-                    document.getElementById('status-badges').innerHTML = 
-                        `<span class="px-2 py-1 text-xs rounded bg-green-900 text-green-300">MARKET SAFE</span>
-                         <span class="px-2 py-1 text-xs rounded bg-blue-900 text-blue-300">AI ACTIVE</span>`;
+                    // 안전: 패널 초록색
+                    marketPanel.className = "mb-10 w-full rounded-xl p-6 flex flex-col md:flex-row justify-between items-center gap-6 shadow-lg status-panel-safe";
+                    document.getElementById('market-regime-text').className = "text-3xl font-bold text-green-400 tracking-widest";
+                    document.getElementById('spy-value').className = "text-2xl font-bold text-green-400";
                 }
 
-                // 2. 종목 리포트 로드 (STEP 1~3)
-                const reportRes = await fetch('final_v12_report.json?t=' + Date.now());
-                const reports = await reportRes.json();
-                container.innerHTML = '';
+                // 종목 리포트 로드
+                const rRes = await fetch('final_v12_report.json?t=' + Date.now());
+                const reports = await rRes.json();
+                grid.innerHTML = '';
 
                 if (reports.length === 0) {
-                    container.innerHTML = `<div class="col-span-full text-center text-gray-600 py-10">NO TARGETS FOUND (SCANNING...)</div>`;
+                    grid.innerHTML = `<div class="col-span-full text-center text-gray-500 py-10">NO TARGETS DETECTED (WAITING FOR OPPORTUNITY)</div>`;
                     return;
                 }
 
@@ -126,35 +125,32 @@
                     card.innerHTML = `
                         <div class="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-900">
                             <div>
-                                <h2 class="text-2xl font-bold text-white">${item.symbol}</h2>
+                                <h2 class="text-xl font-bold text-white">${item.symbol}</h2>
                                 <p class="text-xs text-gray-400">DROP: <span class="text-red-400">${item.drawdown}%</span></p>
                             </div>
-                            <span class="px-3 py-1 text-sm font-bold rounded ${badge}">${item.status}</span>
+                            <span class="px-2 py-1 text-xs font-bold rounded ${badge}">${item.status}</span>
                         </div>
                         <div class="h-40 bg-black w-full" id="${chartId}"></div>
                         <div class="p-4">
-                            <p class="text-sm text-gray-300 border-l-2 border-blue-500 pl-3">${item.reason_kr || "분석 중..."}</p>
+                            <p class="text-sm text-gray-300">${item.reason_kr || "분석 중..."}</p>
                         </div>
                     `;
-                    container.appendChild(card);
+                    grid.appendChild(card);
                     
                     setTimeout(() => {
                         new TradingView.widget({
                             "container_id": chartId, "width": "100%", "height": "100%",
                             "symbol": item.symbol, "interval": "D", "theme": "dark",
-                            "style": "1", "locale": "kr", "hide_top_toolbar": true,
-                            "hide_side_toolbar": true, "allow_symbol_change": false, "save_image": false
+                            "style": "1", "locale": "kr", "hide_top_toolbar": true, "hide_side_toolbar": true, "allow_symbol_change": false, "save_image": false
                         });
                     }, index * 100);
                 });
 
             } catch (e) {
                 console.error(e);
-                container.innerHTML = `<div class="col-span-full text-center text-red-500 py-10">SYSTEM ERROR: RETRYING...</div>`;
             }
         }
-
-        initDashboard();
+        init();
     </script>
 </body>
 </html>
