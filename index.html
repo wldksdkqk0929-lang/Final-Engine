@@ -3,82 +3,93 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SNIPER V13.2 HUD</title>
+    <title>SNIPER V13.2 HUD: SIMULATOR</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
     <style>
         body { font-family: 'JetBrains Mono', monospace; background-color: #0d1117; color: #c9d1d9; }
-        .hud-box { background: #1f2937; padding: 10px 20px; border-radius: 8px; border: 1px solid #374151; box-shadow: 0 0 15px rgba(0,0,0,0.5); }
-        .blur-lock { filter: blur(10px); pointer-events: none; }
-        .danger-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 100; text-align: center; }
+        .hud-card { background: #161b22; border: 1px solid #30363d; border-radius: 12px; }
+        .blur-lock { filter: blur(12px); pointer-events: none; opacity: 0.2; }
+        .risk-overlay { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 50; width: 80%; }
     </style>
 </head>
 <body class="p-4 md:p-8 max-w-7xl mx-auto">
-    <header class="mb-10 flex flex-col md:flex-row justify-between items-center border-b-2 border-blue-900 pb-6 gap-6">
+
+    <div class="mb-10 flex flex-col md:flex-row justify-between items-center gap-6 border-b border-gray-800 pb-8">
         <div>
-            <h1 class="text-3xl font-bold text-blue-400 tracking-tighter">SNIPER <span class="text-white">V13.2</span></h1>
-            <p id="market-msg" class="text-xs font-bold text-green-500 mt-1">SYSTEM OPERATIONAL</p>
+            <h1 class="text-3xl font-bold text-blue-500 tracking-tighter italic">SNIPER V13.2 HUD</h1>
+            <p id="system-status" class="text-[10px] font-bold text-green-500 tracking-[0.3em]">ALL SYSTEMS NOMINAL</p>
         </div>
         <div class="flex gap-4">
-            <div class="hud-box text-center">
-                <p class="text-[10px] text-gray-500 uppercase tracking-widest">Market (SPY)</p>
+            <div class="hud-card p-4 text-center min-w-[120px]">
+                <p class="text-[10px] text-gray-500 mb-1">MARKET PRICE (SPY)</p>
                 <p id="spy-val" class="text-2xl font-bold text-blue-300">--</p>
             </div>
-            <div class="hud-box text-center border-yellow-900">
-                <p class="text-[10px] text-gray-500 uppercase tracking-widest">Fear (VIX)</p>
-                <p id="vix-val" class="text-2xl font-bold text-yellow-400">--</p>
+            <div class="hud-card p-4 text-center min-w-[120px] border-yellow-900/50">
+                <p class="text-[10px] text-gray-500 mb-1">FEAR INDEX (VIX)</p>
+                <p id="vix-val" class="text-2xl font-bold text-yellow-500">--</p>
             </div>
         </div>
-    </header>
+    </div>
 
     <div class="relative">
-        <div id="danger-msg" class="danger-overlay hidden">
-            <h2 class="text-5xl font-bold text-red-600 mb-2">TRADING HALTED</h2>
-            <p class="text-white bg-red-900 px-4 py-2 rounded">시장 수치가 위험권입니다. 진입을 금지합니다.</p>
+        <div id="risk-lock-msg" class="risk-overlay hidden text-center">
+            <div class="bg-red-900/90 border-2 border-red-500 p-8 rounded-2xl shadow-[0_0_50px_rgba(255,0,0,0.3)]">
+                <h2 class="text-4xl font-bold text-white mb-4">⛔ ENTRY FORBIDDEN</h2>
+                <p class="text-red-100 font-bold" id="danger-reason">시장 지표가 교전 수칙을 위반했습니다.</p>
+            </div>
         </div>
-        <div id="grid-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        
+        <div id="stock-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 transition-all duration-700">
             </div>
     </div>
 
     <script>
-        async function sync() {
+        async function commanderSync() {
             try {
-                const mRes = await fetch('market_status.json?v=' + Date.now());
+                // 1. 시장 데이터 수신 및 HUD 랭킹 적용
+                const mRes = await fetch('market_status.json?t=' + Date.now());
                 const m = await mRes.json();
                 document.getElementById('spy-val').innerText = "$" + m.spy_price;
                 document.getElementById('vix-val').innerText = m.vix;
 
+                // 2. 리스크 필터 시뮬레이션
+                const grid = document.getElementById('stock-grid');
+                const lockMsg = document.getElementById('risk-lock-msg');
+                const sysStatus = document.getElementById('system-status');
+
                 if (m.status === 'DANGER') {
-                    document.getElementById('grid-container').classList.add('blur-lock');
-                    document.getElementById('danger-msg').classList.remove('hidden');
-                    document.getElementById('market-msg').innerText = "⚠️ DANGER: " + m.message;
-                    document.getElementById('market-msg').className = "text-xs font-bold text-red-500 animate-pulse";
+                    grid.classList.add('blur-lock');
+                    lockMsg.classList.remove('hidden');
+                    sysStatus.innerText = "⚠️ EMERGENCY LOCKDOWN";
+                    sysStatus.className = "text-[10px] font-bold text-red-500 animate-pulse tracking-[0.3em]";
+                    document.getElementById('danger-reason').innerText = m.message;
                 }
 
-                const rRes = await fetch('final_v12_report.json?v=' + Date.now());
+                // 3. 종목 리포트 렌더링
+                const rRes = await fetch('final_v12_report.json?t=' + Date.now());
                 const reports = await rRes.json();
-                const container = document.getElementById('grid-container');
-                container.innerHTML = '';
+                grid.innerHTML = '';
 
                 reports.forEach((item, i) => {
                     const card = document.createElement('div');
-                    card.className = 'bg-gray-900 rounded-xl overflow-hidden border border-gray-800 shadow-2xl';
+                    card.className = 'hud-card overflow-hidden shadow-xl';
                     const cid = `chart_${i}`;
                     card.innerHTML = `
-                        <div class="p-4 border-b border-gray-800 flex justify-between items-center">
-                            <h3 class="text-xl font-bold">${item.symbol}</h3>
-                            <span class="px-3 py-1 text-[10px] font-bold rounded-full ${item.status==='STRONG'?'bg-green-900 text-green-200':'bg-gray-800 text-gray-400'}">${item.status}</span>
+                        <div class="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-900/30">
+                            <span class="text-xl font-bold text-white">${item.symbol}</span>
+                            <span class="text-[10px] px-2 py-1 rounded-md font-bold ${item.status==='STRONG'?'bg-green-900 text-green-300':'bg-gray-800 text-gray-500'}">${item.status}</span>
                         </div>
-                        <div id="${cid}" class="h-48 w-full"></div>
-                        <div class="p-4"><p class="text-sm text-gray-400 italic">${item.reason_kr}</p></div>
+                        <div id="${cid}" class="h-44 w-full"></div>
+                        <div class="p-4"><p class="text-xs text-gray-400 italic line-clamp-2">${item.reason_kr}</p></div>
                     `;
-                    container.appendChild(card);
+                    grid.appendChild(card);
                     new TradingView.widget({"container_id": cid, "width": "100%", "height": "100%", "symbol": item.symbol, "interval": "D", "theme": "dark", "style": "1", "locale": "kr", "hide_top_toolbar": true, "hide_side_toolbar": true});
                 });
-            } catch (e) { console.error("Sync Error:", e); }
+            } catch (e) { console.error("Sync Critical Error:", e); }
         }
-        sync();
+        commanderSync();
     </script>
 </body>
 </html>
