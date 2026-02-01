@@ -1,9 +1,9 @@
-========== [Step 1] 배포 패키징 ==========
-[main 6dea5cf] Update: Sniper V13.2 HUD & Engine Data
- 3 files changed, 132 insertions(+), 33 deletions(-)
-========== [Step 2] 전 세계 송출 (Git Push) ==========
-To https://github.com/wldksdkqk0929-lang/Final-Engine
-   e4fd657..6dea5cf  main -> main
-========== [Step 3] 배포 완료 확인 ==========
->>> 배포가 완료되었습니다.
->>> 깃허브 사이트는 반영까지 약 1~2분 정도 걸립니다.
+========== [Step 1] V12 전술 엔진(Logic) 이식 ==========
+========== [Step 2] V12 UI 복원 (HTML/Grid/Cards) ==========
+========== [Step 3] 통합 실행 및 배포 ==========
+/workspaces/Final-Engine/engine/v12_scanner.py:15: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  utc_now = datetime.datetime.utcnow()
+/workspaces/Final-Engine/engine/v12_scanner.py:15: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  utc_now = datetime.datetime.utcnow()
+>>> V12 Engine Running... 2026-02-01 14:48:27
+>>> Analysis Complete. 8 Reports Generated.

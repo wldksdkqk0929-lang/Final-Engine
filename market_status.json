@@ -2,49 +2,5 @@
     "status": "NORMAL",
     "spy_price": 691.97,
     "vix": 17.44,
-    "targets": [
-        {
-            "ticker": "TSLA",
-            "price": 430.41,
-            "rsi": 43.5,
-            "volume": "82,483,000",
-            "sector": "Tech/Growth"
-        },
-        {
-            "ticker": "NVDA",
-            "price": 191.13,
-            "rsi": 59.0,
-            "volume": "178,936,900",
-            "sector": "Tech/Growth"
-        },
-        {
-            "ticker": "AAPL",
-            "price": 259.48,
-            "rsi": 50.2,
-            "volume": "92,352,600",
-            "sector": "Tech/Growth"
-        },
-        {
-            "ticker": "MSFT",
-            "price": 430.29,
-            "rsi": 31.2,
-            "volume": "58,470,400",
-            "sector": "Tech/Growth"
-        },
-        {
-            "ticker": "AMZN",
-            "price": 239.3,
-            "rsi": 40.3,
-            "volume": "46,535,400",
-            "sector": "Tech/Growth"
-        },
-        {
-            "ticker": "GOOGL",
-            "price": 338.0,
-            "rsi": 60.9,
-            "volume": "30,980,500",
-            "sector": "Tech/Growth"
-        }
-    ],
-    "last_update": "2026-02-01 14:10:34 (KST)"
+    "last_update": "2026-02-01 14:48:27"
 }
